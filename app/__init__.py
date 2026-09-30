@@ -1,0 +1,2 @@
+"""Local Short Studio application."""
+

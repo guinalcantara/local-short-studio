@@ -1,0 +1,38 @@
+{
+  "title": "Primeiro Short de Games",
+  "profile": "short_vertical",
+  "voice": "pf_dora",
+  "speech_speed": 1.0,
+  "visual_style": "cinematic digital illustration, blue and white palette, dramatic but mature tone, cohesive lighting",
+  "captions": {
+    "enabled": false,
+    "theme": "modern_blue"
+  },
+  "scenes": [
+    {
+      "id": "abertura",
+      "narration": "Comece com uma frase curta que desperte curiosidade.",
+      "image_prompt": "close-up of a mysterious game controller on a dark desk, cinematic rim lighting, vertical composition, subject centered",
+      "motion": "slow_push_in",
+      "image_path": null,
+      "seed": 1401
+    },
+    {
+      "id": "contexto",
+      "narration": "Explique rapidamente o contexto ou a ideia principal.",
+      "image_prompt": "a dramatic fantasy landscape at blue hour, wide depth, vertical framing with space in the lower third",
+      "motion": "pan_left",
+      "image_path": null,
+      "seed": 1402
+    },
+    {
+      "id": "fechamento",
+      "narration": "Feche com a conclusão ou uma pergunta para quem está assistindo.",
+      "image_prompt": "heroic silhouette looking toward a glowing horizon, cinematic composition, mature game-art mood",
+      "motion": "slow_pull_out",
+      "image_path": null,
+      "seed": 1403
+    }
+  ]
+}
+

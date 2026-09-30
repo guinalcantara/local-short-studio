@@ -1,0 +1,7 @@
+streamlit>=1.40,<2
+requests>=2.32,<3
+kokoro>=0.9.4,<1
+soundfile>=0.12,<1
+pydantic>=2.8,<3
+pillow>=10,<12
+

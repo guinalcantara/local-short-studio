@@ -1,0 +1,31 @@
+{
+  "short_vertical": {
+    "label": "Short vertical (ativo)",
+    "enabled": true,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "crf": 20,
+    "preset": "medium",
+    "transition_seconds": 0.35,
+    "scene_hold_seconds": 0.45,
+    "audio_padding_seconds": 0.15,
+    "caption_font_size": 62,
+    "caption_margin_vertical": 190
+  },
+  "video_landscape": {
+    "label": "Vídeo horizontal (futuro)",
+    "enabled": false,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "crf": 20,
+    "preset": "medium",
+    "transition_seconds": 0.5,
+    "scene_hold_seconds": 0.6,
+    "audio_padding_seconds": 0.2,
+    "caption_font_size": 48,
+    "caption_margin_vertical": 70
+  }
+}
+

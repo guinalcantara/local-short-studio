@@ -1,0 +1,73 @@
+services:
+  comfyui:
+    build:
+      context: ./docker/comfyui
+    container_name: local-short-studio-comfyui
+    restart: unless-stopped
+    command: ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188", "--lowvram"]
+    ports:
+      - "127.0.0.1:${COMFYUI_PORT:-8188}:8188"
+    volumes:
+      - ./models/checkpoints:/opt/ComfyUI/models/checkpoints
+      - ./models/loras:/opt/ComfyUI/models/loras
+      - ./models/vae:/opt/ComfyUI/models/vae
+      - ./output/comfy:/opt/ComfyUI/output
+      - ./workflows:/workspace/workflows:ro
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: local-short-studio-app
+    restart: unless-stopped
+    depends_on:
+      - comfyui
+    ports:
+      - "127.0.0.1:${APP_PORT:-8501}:8501"
+    volumes:
+      - ./input:/workspace/input
+      - ./output:/workspace/output
+      - ./models/kokoro:/root/.cache/huggingface
+      - ./config:/workspace/config:ro
+      - ./workflows:/workspace/workflows:ro
+      - ./assets/fonts:/workspace/assets/fonts:ro
+    environment:
+      COMFYUI_URL: http://comfyui:8188
+      COMFYUI_WORKFLOW: /workspace/workflows/sd15_portrait_api.json
+      CHECKPOINT_NAME: ${CHECKPOINT_NAME:-sd-v1-5-pruned-emaonly-fp16.safetensors}
+      IMAGE_WIDTH: ${IMAGE_WIDTH:-512}
+      IMAGE_HEIGHT: ${IMAGE_HEIGHT:-896}
+      IMAGE_STEPS: ${IMAGE_STEPS:-18}
+      IMAGE_CFG: ${IMAGE_CFG:-6.5}
+      TTS_DEVICE: ${TTS_DEVICE:-cuda}
+      TTS_VOICE: ${TTS_VOICE:-pf_dora}
+      VIDEO_ENCODER: ${VIDEO_ENCODER:-auto}
+      RENDER_PROFILES: /workspace/config/render_profiles.json
+      INPUT_DIR: /workspace/input
+      OUTPUT_DIR: /workspace/output
+      CAPTION_FONT: Inter
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import torch; assert torch.cuda.is_available()"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
