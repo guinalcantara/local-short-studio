@@ -1,0 +1,17 @@
+.env
+__pycache__/
+.pytest_cache/
+*.py[cod]
+models/**
+!models/**/.gitkeep
+input/**
+!input/.gitkeep
+output/**
+!output/.gitkeep
+*.mp4
+*.wav
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+
