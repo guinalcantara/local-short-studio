@@ -59,6 +59,8 @@ Chatterbox usa o ajuste dedicado `ResembleAI/Chatterbox-Multilingual-pt-br`, com
 
 Em vez de voz e velocidade do Kokoro, a interface mostra **Expressividade**, **Controle de ritmo** e **Variação**, que são os controles compatíveis com Chatterbox. Se o download, o modelo ou a CUDA falharem, a geração é interrompida com erro; não há troca automática para Kokoro.
 
+O campo **Áudio de referência da sua voz** é opcional. Para reproduzir a identidade vocal, envie um arquivo WAV, MP3, FLAC ou OGG com aproximadamente 5–10 segundos de fala limpa em português brasileiro. Evite música, eco, ruído e outras pessoas no mesmo áudio. A referência é preparada uma vez por geração; o arquivo fica na pasta de áudio da execução e não entra no JSON.
+
 ## 5. Saída
 
 O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera os WAVs com o mecanismo escolhido em CUDA, e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg. Durante a montagem, a barra informa a cena atual, as cenas concluídas e a etapa final de transições/áudio.

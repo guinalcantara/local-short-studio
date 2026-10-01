@@ -24,12 +24,19 @@ class ChatterboxPTBRTTS:
         exaggeration: float | None = None,
         cfg_weight: float | None = None,
         temperature: float | None = None,
+        reference_audio_path: str | Path | None = None,
     ):
         self.device = device or os.getenv("CHATTERBOX_DEVICE", "cuda")
         self.exaggeration = float(exaggeration if exaggeration is not None else os.getenv("CHATTERBOX_EXAGGERATION", "0.5"))
         self.cfg_weight = float(cfg_weight if cfg_weight is not None else os.getenv("CHATTERBOX_CFG_WEIGHT", "0.5"))
         self.temperature = float(temperature if temperature is not None else os.getenv("CHATTERBOX_TEMPERATURE", "0.8"))
+        self.reference_audio_path = Path(reference_audio_path) if reference_audio_path else None
+        self._reference_loaded_path: str | None = None
         self.model = None
+
+    def set_reference_audio(self, reference_audio_path: str | Path | None) -> None:
+        self.reference_audio_path = Path(reference_audio_path) if reference_audio_path else None
+        self._reference_loaded_path = None
 
     @staticmethod
     def _link(target: Path, source: Path) -> None:
@@ -134,10 +141,32 @@ class ChatterboxPTBRTTS:
                 "depois verifique o cache em models/kokoro e a compatibilidade CUDA."
             ) from exc
 
+    def _prepare_reference(self, model) -> None:
+        if self.reference_audio_path is None:
+            return
+        reference_path = self.reference_audio_path
+        if not reference_path.is_file():
+            raise FileNotFoundError(f"Audio de referencia nao encontrado: {reference_path}")
+        resolved_path = str(reference_path.resolve())
+        if self._reference_loaded_path == resolved_path:
+            return
+        try:
+            # Prepare the speaker/emotion conditionals once per generation.
+            # Calling generate(audio_prompt_path=...) for every sentence would
+            # recompute the voice embedding and make long Shorts unnecessarily slow.
+            model.prepare_conditionals(str(reference_path), exaggeration=self.exaggeration)
+        except Exception as exc:
+            raise RuntimeError(
+                "Nao foi possivel preparar o audio de referencia. "
+                "Use um clipe curto, limpo, sem musica ou reverberacao."
+            ) from exc
+        self._reference_loaded_path = resolved_path
+
     def generate_sentence(self, text: str, voice: str | None = None, speed: float | None = None) -> np.ndarray:
         del voice, speed
         model = self._get_model()
         try:
+            self._prepare_reference(model)
             audio = model.generate(
                 text,
                 language_id="pt",
@@ -161,6 +190,7 @@ class ChatterboxPTBRTTS:
 
     def release(self) -> None:
         self.model = None
+        self._reference_loaded_path = None
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.synchronize()

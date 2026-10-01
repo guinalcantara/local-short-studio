@@ -19,6 +19,10 @@ from app.tts_chatterbox import ChatterboxPTBRTTS
 from app.voices import normalize_tts_engine, tts_engine_label
 
 
+VOICE_REFERENCE_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg"}
+VOICE_REFERENCE_MAX_BYTES = 25 * 1024 * 1024
+
+
 def slugify(value: str) -> str:
     ascii_text = value.encode("ascii", "ignore").decode("ascii").lower()
     return re.sub(r"[^a-z0-9]+", "-", ascii_text).strip("-") or "projeto"
@@ -27,6 +31,21 @@ def slugify(value: str) -> str:
 def _write_audio(audio: np.ndarray, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(path, audio, SAMPLE_RATE, subtype="PCM_16")
+
+
+def _write_voice_reference(reference_audio: bytes | bytearray | memoryview, filename: str | None, audio_dir: Path) -> Path:
+    data = bytes(reference_audio)
+    if not data:
+        raise ValueError("O audio de referencia esta vazio.")
+    if len(data) > VOICE_REFERENCE_MAX_BYTES:
+        raise ValueError("O audio de referencia deve ter no maximo 25 MB.")
+    suffix = Path(filename or "voice_reference.wav").suffix.lower()
+    if suffix not in VOICE_REFERENCE_EXTENSIONS:
+        allowed = ", ".join(sorted(VOICE_REFERENCE_EXTENSIONS))
+        raise ValueError(f"Formato de audio de referencia invalido. Use: {allowed}.")
+    target = audio_dir / f"voice_reference{suffix}"
+    target.write_bytes(data)
+    return target
 
 
 def _build_voice_track(tts, project: VideoProject, audio_dir: Path, padding_seconds: float, progress):
@@ -91,7 +110,14 @@ class ShortPipeline:
         else:
             self.tts = ChatterboxPTBRTTS(**(chatterbox_settings or {}))
 
-    def run(self, project: VideoProject, image_zip: bytes | bytearray | memoryview | str | Path | BinaryIO) -> Path:
+    def run(
+        self,
+        project: VideoProject,
+        image_zip: bytes | bytearray | memoryview | str | Path | BinaryIO,
+        *,
+        voice_reference: bytes | bytearray | memoryview | None = None,
+        voice_reference_name: str | None = None,
+    ) -> Path:
         profile = self.profiles.get(project.profile)
         if not profile:
             raise ValueError(f"Perfil não encontrado: {project.profile}")
@@ -117,6 +143,12 @@ class ShortPipeline:
         project_path = project_dir / "project.json"
         project_path.write_text(project.to_json() + "\n", encoding="utf-8")
         (project_dir / "narration.txt").write_text(project.narration_text() + "\n", encoding="utf-8")
+
+        if voice_reference is not None:
+            if self.tts_engine != "chatterbox_ptbr":
+                raise ValueError("O audio de referencia so pode ser usado com Chatterbox PT-BR.")
+            reference_path = _write_voice_reference(voice_reference, voice_reference_name, audio_dir)
+            self.tts.set_reference_audio(reference_path)
 
         image_paths: list[Path] = []
         for scene in project.scenes:

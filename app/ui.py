@@ -92,6 +92,7 @@ image_effects_enabled = st.checkbox(
     value=True,
     help="Desmarque para testar a narração e as transições sem aplicar zoom ou panorâmica. As transições entre cenas continuam ativas.",
 )
+voice_reference_upload = None
 if tts_engine == "kokoro":
     voice_codes = [code for _, code in KOKORO_VOICES]
     selected_voice = normalize_voice(parsed.voice if parsed else None)
@@ -113,7 +114,12 @@ if tts_engine == "kokoro":
 else:
     voice = normalize_voice(parsed.voice if parsed else None)
     speech_speed = float(parsed.speech_speed) if parsed else 1.0
-    st.info("Chatterbox usa o checkpoint dedicado pt-BR e uma voz interna; os controles abaixo são os compatíveis com esse mecanismo.")
+    st.info("Chatterbox usa o checkpoint dedicado pt-BR. Sem referência, usa a voz interna; com um áudio, tenta reproduzir a sua voz.")
+    voice_reference_upload = st.file_uploader(
+        "Áudio de referência da sua voz (opcional)",
+        type=["wav", "mp3", "flac", "ogg"],
+        help="Use 5–10 segundos de voz limpa, em português brasileiro, sem música, eco ou outras pessoas.",
+    )
     cb_left, cb_middle, cb_right = st.columns(3)
     chatterbox_exaggeration = cb_left.slider("Expressividade", 0.25, 1.0, 0.5, 0.05)
     chatterbox_cfg = cb_middle.slider("Controle de ritmo", 0.2, 0.8, 0.5, 0.05)
@@ -171,7 +177,12 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
                 tts_engine=tts_engine,
                 chatterbox_settings=chatterbox_settings,
                 image_effects_enabled=image_effects_enabled,
-            ).run(project, images_upload.getvalue())
+            ).run(
+                project,
+                images_upload.getvalue(),
+                voice_reference=voice_reference_upload.getvalue() if voice_reference_upload else None,
+                voice_reference_name=voice_reference_upload.name if voice_reference_upload else None,
+            )
         status_text.success("Short finalizado.")
         progress_bar.progress(1.0, text="Pronto")
         st.video(str(output_video), width=VIDEO_PREVIEW_WIDTH)

@@ -43,6 +43,8 @@ O bloco opcional `youtube` é apenas metadado preparado para uma integração fu
 
 O seletor de mecanismo de narração fica fora do JSON para preservar o contrato do projeto. Kokoro oferece Dora, Alex, Santa e velocidade; Chatterbox usa o pacote dedicado pt-BR e oferece expressividade, controle de ritmo e variação.
 
+No Chatterbox, também é possível enviar um áudio de referência de 5 a 10 segundos. Use uma gravação limpa em português brasileiro, sem música, eco ou outras pessoas. O arquivo é usado localmente e salvo somente em `output/<execução>/audio/`; ele não altera o JSON.
+
 Narrações devem escrever nomes completos para melhorar a pronúncia: use **“tiranossauro rex”**, nunca “T. rex”, “T-Rex” ou “T rex”.
 
 ## Saídas e testes

@@ -91,6 +91,45 @@ class PipelineZipTests(unittest.TestCase):
             self.assertEqual(render_video.call_args.kwargs["motions"], ["slow_push_in", "pan_left"])
             self.assertFalse(render_video.call_args.kwargs["image_effects_enabled"])
 
+    def test_pipeline_stores_chatterbox_voice_reference_in_run(self):
+        project = VideoProject(
+            title="Teste voz clonada",
+            scenes=[
+                Scene(id="gancho", narration="Primeira fala.", image_path="gancho.png", motion="static"),
+                Scene(id="contexto", narration="Segunda fala.", image_path="contexto.png", motion="static"),
+            ],
+        )
+        reference = b"RIFF" + (b"reference" * 32)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            narration = Path(temp_dir) / "narration.wav"
+            with wave.open(str(narration), "wb") as handle:
+                handle.setnchannels(1)
+                handle.setsampwidth(2)
+                handle.setframerate(24000)
+                handle.writeframes(b"\x00\x00" * 2400)
+
+            def fake_voice_track(_tts, _project, audio_dir, _padding, _progress):
+                target = Path(audio_dir) / "narration.wav"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(narration.read_bytes())
+                return target, [], [0.1, 0.1]
+
+            with patch.dict(os.environ, {"OUTPUT_DIR": temp_dir}), patch("app.pipeline.torch.cuda.is_available", return_value=True), patch(
+                "app.pipeline._build_voice_track", side_effect=fake_voice_track
+            ), patch("app.pipeline.render_video") as render_video:
+                render_video.side_effect = lambda *args, **_kwargs: Path(args[3])
+                pipeline = ShortPipeline(tts_engine="chatterbox_ptbr")
+                result = pipeline.run(
+                    project,
+                    zip_with_images(),
+                    voice_reference=reference,
+                    voice_reference_name="minha_voz.wav",
+                )
+
+            saved_reference = result.parent / "audio" / "voice_reference.wav"
+            self.assertEqual(saved_reference.read_bytes(), reference)
+            self.assertEqual(pipeline.tts.reference_audio_path, saved_reference)
+
 
 if __name__ == "__main__":
     unittest.main()

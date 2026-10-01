@@ -37,6 +37,10 @@ docker compose logs --tail=200 app
 docker compose exec app python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
 ```
 
+### Chatterbox não reproduz bem a voz de referência
+
+Use um clipe de 5–10 segundos, com uma única pessoa falando em português brasileiro, sem música, eco ou ruído. A referência deve ser fala contínua e inteligível; gravações muito curtas, silenciosas ou com cortes podem gerar pronúncia instável. A aplicação prepara a referência uma vez por execução e mantém o arquivo somente no diretório local do Short.
+
 Confira o driver NVIDIA no Windows, o backend WSL 2 e se nenhum programa está ocupando toda a VRAM. O CUDA é usado pelo Kokoro; não é necessário instalar driver NVIDIA Linux dentro do container.
 
 ## Kokoro não encontra pesos ou voz
