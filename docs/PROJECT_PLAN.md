@@ -4,7 +4,7 @@
 
 ## Objetivo
 
-Receber cenas já ilustradas, gerar narração local em português brasileiro com Kokoro, aplicar movimento de câmera simulado, crossfades, legendas opcionais e exportar um MP4 vertical pronto para revisão.
+Receber cenas já ilustradas, gerar narração local em português brasileiro com Kokoro ou Chatterbox, aplicar movimento de câmera simulado, crossfades, legendas opcionais e exportar um MP4 vertical pronto para revisão.
 
 ## Fluxo ativo
 
@@ -13,7 +13,7 @@ JSON + imagens_cenas.zip
         ↓
 validação de esquema e ZIP seguro
         ↓
-Kokoro pt-BR em CUDA
+Kokoro pt-BR ou Chatterbox PT-BR em CUDA
         ↓
 FFmpeg: pan/zoom, transições, legendas opcionais
         ↓
@@ -25,9 +25,9 @@ O app não gera imagens. Cada `image_path` é obrigatório e aponta para um base
 ## Hardware e serviços
 
 - Windows + Docker Desktop + WSL 2;
-- RTX 2060 de 6 GB para Kokoro/CUDA;
+- RTX 2060 de 6 GB para os mecanismos de voz/CUDA;
 - Ryzen 5 5600G e 16 GB de RAM;
-- FFmpeg no container app, com libx264 como caminho compatível;
+- FFmpeg no container app, com NVENC quando disponível e libx264 como caminho compatível;
 - app Streamlit como único serviço necessário no Compose padrão;
 - ComfyUI/Stable Diffusion mantido somente em perfil Docker legado opcional.
 
@@ -48,7 +48,7 @@ O bloco opcional `youtube` contém somente metadados validados e é preservado n
 1. `docker compose up --build -d` inicia o app sem ComfyUI.
 2. JSON e ZIP inválidos bloqueiam a geração com mensagens úteis.
 3. As imagens referenciadas são copiadas apenas para a pasta da execução.
-4. Kokoro usa CUDA sequencialmente para todas as falas com a voz escolhida.
+4. O mecanismo escolhido usa CUDA sequencialmente para todas as falas; Kokoro e Chatterbox não são usados ao mesmo tempo.
 5. FFmpeg gera MP4 vertical com movimentos, transições, áudio e legendas opcionais.
 6. Metadados `youtube` são aceitos, validados e preservados sem publicação.
 7. Testes cobrem esquema, vozes, segurança do ZIP e renderização.

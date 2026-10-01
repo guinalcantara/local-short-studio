@@ -3,7 +3,7 @@ import unittest
 from app.captions import srt_timestamp, wrap_caption
 from app.schemas import VideoProject, example_project
 from app.renderer import load_profiles
-from app.voices import DEFAULT_VOICE, normalize_voice
+from app.voices import DEFAULT_VOICE, normalize_tts_engine, normalize_voice
 
 
 class ProjectTests(unittest.TestCase):
@@ -80,6 +80,11 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(normalize_voice("pm_santa"), "pm_santa")
         self.assertEqual(normalize_voice("idioma-inexistente"), DEFAULT_VOICE)
 
+    def test_tts_engine_selection_has_safe_kokoro_default(self):
+        self.assertEqual(normalize_tts_engine("kokoro"), "kokoro")
+        self.assertEqual(normalize_tts_engine("chatterbox_ptbr"), "chatterbox_ptbr")
+        self.assertEqual(normalize_tts_engine("mecanismo-inexistente"), "kokoro")
+
     def test_caption_helpers(self):
         wrapped = wrap_caption("Essa é uma frase um pouco comprida para caber numa legenda vertical moderna", max_chars=25)
         self.assertLessEqual(len(wrapped.splitlines()), 2)
@@ -89,6 +94,14 @@ class ProjectTests(unittest.TestCase):
         profiles = load_profiles("config/render_profiles.json")
         self.assertEqual((profiles["video_landscape"]["width"], profiles["video_landscape"]["height"]), (1920, 1080))
         self.assertFalse(profiles["video_landscape"]["enabled"])
+
+    def test_motion_rendering_settings_are_internal_to_the_profile(self):
+        profiles = load_profiles("config/render_profiles.json")
+        vertical = profiles["short_vertical"]
+        self.assertEqual(vertical["motion_render_scale"], 2)
+        self.assertEqual(vertical["motion_easing"], "quintic")
+        self.assertLess(vertical["motion_zoom_amount"], 0.075)
+        self.assertLess(vertical["motion_pan_amount"], 0.08)
 
 
 if __name__ == "__main__":

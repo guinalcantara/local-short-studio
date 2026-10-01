@@ -34,28 +34,42 @@ def _quote_filter_path(path: Path) -> str:
     return resolved.replace(":", r"\:").replace("'", r"\'")
 
 
-def _motion_expressions(motion: str, frames: int) -> tuple[str, str, str]:
+def _motion_expressions(
+    motion: str,
+    frames: int,
+    *,
+    zoom_amount: float = 0.05,
+    pan_amount: float = 0.06,
+    easing: str = "quintic",
+) -> tuple[str, str, str]:
     # zoompan uses the crop dimensions before output scaling; the source is overscanned.
-    progress = f"(0.5-0.5*cos(PI*on/{max(1, frames - 1)}))"
+    # A quintic smoothstep has zero velocity and acceleration at both ends. This avoids
+    # the visible jerk that cosine easing can still expose after pixel quantization.
+    denominator = max(1, frames - 1)
+    normalized = f"(on/{denominator})"
+    if easing == "quintic":
+        progress = f"(({normalized})*({normalized})*({normalized})*(({normalized})*(({normalized})*6-15)+10))"
+    else:
+        progress = f"(0.5-0.5*cos(PI*on/{denominator}))"
     center_x = "iw/2-(iw/zoom/2)"
     center_y = "ih/2-(ih/zoom/2)"
     if motion == "slow_push_in":
-        return (f"1.0+0.075*{progress}", center_x, center_y)
+        return (f"1.0+{zoom_amount}*{progress}", center_x, center_y)
     if motion == "slow_pull_out":
-        return (f"1.075-0.075*{progress}", center_x, center_y)
+        return (f"1.0+{zoom_amount}*(1-{progress})", center_x, center_y)
     if motion == "pan_left":
-        z = "1.08"
+        z = f"1.0+{pan_amount}"
         return (z, f"(iw-iw/zoom)*{progress}", center_y)
     if motion == "pan_right":
-        z = "1.08"
+        z = f"1.0+{pan_amount}"
         return (z, f"(iw-iw/zoom)*(1-{progress})", center_y)
     if motion == "pan_up":
-        z = "1.08"
+        z = f"1.0+{pan_amount}"
         return (z, center_x, f"(ih-ih/zoom)*{progress}")
     if motion == "pan_down":
-        z = "1.08"
+        z = f"1.0+{pan_amount}"
         return (z, center_x, f"(ih-ih/zoom)*(1-{progress})")
-    return ("1.025", center_x, center_y)
+    return ("1.0", center_x, center_y)
 
 
 def _run(command: list[str]) -> None:
@@ -92,6 +106,7 @@ def render_video(
     caption_font: str = "Inter",
     encoder_mode: str | None = None,
     assets_dir: str | Path = "/workspace/assets",
+    progress=None,
 ) -> Path:
     if not image_paths:
         raise ValueError("Adicione pelo menos uma imagem para montar o vídeo.")
@@ -110,6 +125,13 @@ def render_video(
     hold = float(profile["scene_hold_seconds"])
     crf = int(profile.get("crf", 20))
     preset = str(profile.get("preset", "medium"))
+    motion_render_scale = max(1.0, float(profile.get("motion_render_scale", 2.0)))
+    motion_overscan = max(1.0, float(profile.get("motion_overscan", 1.12)))
+    motion_zoom_amount = max(0.0, float(profile.get("motion_zoom_amount", 0.05)))
+    motion_pan_amount = max(0.0, float(profile.get("motion_pan_amount", 0.06)))
+    motion_easing = str(profile.get("motion_easing", "quintic"))
+    motion_width = round(width * motion_render_scale)
+    motion_height = round(height * motion_render_scale)
     use_encoder = encoder_mode or os.getenv("VIDEO_ENCODER", "auto")
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -129,15 +151,24 @@ def render_video(
     for index, (image_path, motion, duration) in enumerate(zip(image_paths, selected_motions, clip_durations)):
         source = Path(image_path)
         motion_name = resolve_motion(motion, index)
+        if progress:
+            progress(f"Renderizando cena {index + 1}/{len(image_paths)} ({motion_name})...", 0.86 + 0.09 * (index / len(image_paths)))
         frames = max(2, round(duration * fps))
-        zoom, x_expr, y_expr = _motion_expressions(motion_name, frames)
+        zoom, x_expr, y_expr = _motion_expressions(
+            motion_name,
+            frames,
+            zoom_amount=motion_zoom_amount,
+            pan_amount=motion_pan_amount,
+            easing=motion_easing,
+        )
         clip = work / f"scene_{index:02d}.mp4"
-        overscan_w = round(width * 1.12)
-        overscan_h = round(height * 1.12)
+        overscan_w = round(motion_width * motion_overscan)
+        overscan_h = round(motion_height * motion_overscan)
         vf = (
             f"scale={overscan_w}:{overscan_h}:force_original_aspect_ratio=increase:flags=lanczos,"
             f"crop={overscan_w}:{overscan_h},"
-            f"zoompan=z='{zoom}':x='{x_expr}':y='{y_expr}':d=1:s={width}x{height}:fps={fps},"
+            f"zoompan=z='{zoom}':x='{x_expr}':y='{y_expr}':d=1:s={motion_width}x{motion_height}:fps={fps},"
+            f"scale={width}:{height}:flags=lanczos,"
             f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
         )
         _run([
@@ -147,6 +178,8 @@ def render_video(
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(clip),
         ])
         clip_paths.append(clip)
+        if progress:
+            progress(f"Cena {index + 1}/{len(image_paths)} renderizada.", 0.86 + 0.09 * ((index + 1) / len(image_paths)))
 
     inputs: list[str] = []
     for clip in clip_paths:
@@ -198,6 +231,8 @@ def render_video(
         graph.append(f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[aout]")
 
     filter_complex = ";".join(graph)
+    if progress:
+        progress("Montando transicoes, audio e legendas...", 0.95)
     _run([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *inputs,
         "-filter_complex", filter_complex,
@@ -207,4 +242,6 @@ def render_video(
         "-c:a", "aac", "-b:a", "192k", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         str(out),
     ])
+    if progress:
+        progress("Finalizando o arquivo MP4...", 0.99)
     return out

@@ -43,6 +43,21 @@ Confira o driver NVIDIA no Windows, o backend WSL 2 e se nenhum programa está o
 
 A primeira narração pode baixar/cachear pesos em `models/kokoro/`. Mantenha rede disponível nessa primeira execução. Use uma das vozes `pf_dora`, `pm_alex` ou `pm_santa`; códigos inválidos são normalizados para Dora na interface.
 
+## Chatterbox PT-BR não carrega ou demora na primeira execução
+
+O primeiro uso baixa o ajuste dedicado pt-BR e componentes compartilhados do Hugging Face. Isso pode levar alguns gigabytes e alguns minutos; o cache fica em `models/kokoro/`. Verifique:
+
+```powershell
+docker compose logs --tail=200 app
+docker compose exec app python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
+```
+
+O app não troca automaticamente para Kokoro. Se aparecer erro de dependência, reconstrua com `docker compose up --build -d app`; se aparecer erro de CUDA, confira o driver NVIDIA, WSL 2 e Docker Desktop.
+
+## Barra parada em uma cena de renderização
+
+O renderer cria cada cena em alta resolução interna, aplica pan/zoom e depois monta as transições. Em uma RTX 2060, várias cenas podem levar minutos, especialmente com `motion_render_scale=2`. A barra deve avançar após cada cena. Enquanto houver novos arquivos em `output/<execução>/render_work/`, o processo está ativo; antes de interromper, verifique `docker compose logs --tail=200 app` e `docker compose ps`.
+
 ## FFmpeg, fontes ou legendas
 
 O app instala FFmpeg, Inter e fontes sans-serif na imagem. Se o problema ocorrer apenas com legendas, desligue-as para isolar a montagem; depois confira `docker compose logs app`.

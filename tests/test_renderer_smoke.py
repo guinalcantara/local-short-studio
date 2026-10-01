@@ -78,6 +78,7 @@ class RendererSmokeTests(unittest.TestCase):
 
     def test_short_renders_with_smooth_transition_and_no_captions(self):
         output = self.root / "without_captions.mp4"
+        progress_updates = []
         render_video(
             self.images,
             [0.55, 0.55],
@@ -88,10 +89,13 @@ class RendererSmokeTests(unittest.TestCase):
             motions=["slow_push_in", "pan_left"],
             captions_enabled=False,
             encoder_mode="libx264",
+            progress=lambda message, fraction=None: progress_updates.append((message, fraction)),
         )
         self.assertGreater(output.stat().st_size, 1000)
         self.assert_mp4_has_vertical_video_and_audio(output)
         self.assertFalse(output.with_suffix(".srt").exists())
+        self.assertTrue(any("Cena 1/2 renderizada" in message for message, _ in progress_updates))
+        self.assertGreaterEqual(progress_updates[-1][1], 0.99)
 
     def test_short_renders_with_modern_caption_track_burned_in(self):
         output = self.root / "with_captions.mp4"

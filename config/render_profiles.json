@@ -10,6 +10,11 @@
     "transition_seconds": 0.35,
     "scene_hold_seconds": 0.45,
     "audio_padding_seconds": 0.15,
+    "motion_render_scale": 2,
+    "motion_overscan": 1.12,
+    "motion_zoom_amount": 0.05,
+    "motion_pan_amount": 0.06,
+    "motion_easing": "quintic",
     "caption_font_size": 62,
     "caption_margin_vertical": 190
   },
@@ -24,8 +29,12 @@
     "transition_seconds": 0.5,
     "scene_hold_seconds": 0.6,
     "audio_padding_seconds": 0.2,
+    "motion_render_scale": 2,
+    "motion_overscan": 1.12,
+    "motion_zoom_amount": 0.05,
+    "motion_pan_amount": 0.06,
+    "motion_easing": "quintic",
     "caption_font_size": 48,
     "caption_margin_vertical": 70
   }
 }
-

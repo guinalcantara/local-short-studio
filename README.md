@@ -7,7 +7,7 @@ Gere Shorts verticais localmente a partir de um roteiro JSON e de um ZIP com uma
 1. Prepare `modelo_projeto.json` com uma cena por imagem.
 2. Prepare `imagens_cenas.zip` com os arquivos referenciados em `image_path`.
 3. Abra o Streamlit, envie os dois arquivos e corrija qualquer aviso de nomes, formatos ou arquivos ausentes.
-4. Escolha Dora, Alex ou Santa, ajuste velocidade, música e legendas, e clique em **Gerar Short**.
+4. Escolha Kokoro ou Chatterbox PT-BR, configure os controles compatíveis, música e legendas, e clique em **Gerar Short**.
 
 O app não gera imagens e não usa ComfyUI no fluxo padrão. O serviço ComfyUI antigo permanece somente como perfil Docker opcional para referência futura.
 
@@ -16,7 +16,8 @@ O app não gera imagens e não usa ComfyUI no fluxo padrão. O serviço ComfyUI 
 - Windows com Docker Desktop usando backend WSL 2.
 - Driver NVIDIA atualizado e GPU visível ao Docker; a RTX 2060 de 6 GB é o alvo desta versão.
 - Ryzen 5 5600G, 16 GB de RAM e espaço para imagens, cache Kokoro e renders.
-- CUDA continua sendo usada pelo Kokoro; o Toolkit instalado no Windows não substitui o driver encaminhado ao container.
+- CUDA continua sendo usada pelo mecanismo de voz escolhido; o Toolkit instalado no Windows não substitui o driver encaminhado ao container.
+- Chatterbox PT-BR é uma alternativa local; o primeiro uso baixa os pesos oficiais e reutiliza o cache em `models/kokoro/`.
 - PNG, JPG, JPEG ou WebP para as imagens das cenas.
 
 ## Instalação e execução
@@ -39,6 +40,8 @@ O comando padrão constrói e inicia somente o app. Não exige checkpoint, Comfy
 Use [`examples/modelo_projeto.json`](examples/modelo_projeto.json) como base. `image_path` é obrigatório e deve ser somente o nome do arquivo, sem pastas. O ZIP pode conter as imagens na raiz ou em uma única subpasta; o app resolve por basename, valida bytes e copia apenas as imagens usadas para a execução.
 
 O bloco opcional `youtube` é apenas metadado preparado para uma integração futura. Ele é validado e preservado no `project.json`, mas não há OAuth, upload, agendamento ou chamada à API nesta versão.
+
+O seletor de mecanismo de narração fica fora do JSON para preservar o contrato do projeto. Kokoro oferece Dora, Alex, Santa e velocidade; Chatterbox usa o pacote dedicado pt-BR e oferece expressividade, controle de ritmo e variação.
 
 Narrações devem escrever nomes completos para melhorar a pronúncia: use **“tiranossauro rex”**, nunca “T. rex”, “T-Rex” ou “T rex”.
 

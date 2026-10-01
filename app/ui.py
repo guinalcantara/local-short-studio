@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import time
 
 import streamlit as st
 import torch
@@ -9,7 +10,10 @@ import torch
 from app.image_archive import ImageZipError, ImageZipValidation, validate_image_zip
 from app.pipeline import ShortPipeline
 from app.schemas import VideoProject, example_project
-from app.voices import KOKORO_VOICES, normalize_voice, voice_label
+from app.voices import KOKORO_VOICES, TTS_ENGINES, normalize_voice, tts_engine_label, voice_label
+
+
+VIDEO_PREVIEW_WIDTH = 360
 
 
 st.set_page_config(page_title="Local Short Studio", page_icon="🎬", layout="wide")
@@ -69,28 +73,51 @@ images_upload = st.file_uploader(
     help="O ZIP pode conter imagens na raiz ou em uma única subpasta. Use PNG, JPG, JPEG ou WebP.",
 )
 
+engine_codes = [code for _, code in TTS_ENGINES]
+tts_engine = st.selectbox(
+    "Mecanismo de narração",
+    options=engine_codes,
+    format_func=tts_engine_label,
+    help="Escolha o mecanismo usado nesta geração. A escolha não altera o JSON do projeto.",
+)
+
 left, right = st.columns(2)
 captions_enabled = left.checkbox(
     "Adicionar legendas modernas",
     value=bool(parsed.captions.enabled) if parsed else False,
     help="Desmarcado: não queima texto no vídeo nem cria arquivo SRT.",
 )
-voice_codes = [code for _, code in KOKORO_VOICES]
-selected_voice = normalize_voice(parsed.voice if parsed else None)
-voice = right.selectbox(
-    "Voz da narração",
-    options=voice_codes,
-    index=voice_codes.index(selected_voice),
-    format_func=voice_label,
-    help="Todas as falas usam a voz escolhida em português brasileiro.",
-)
-speech_speed = st.slider(
-    "Velocidade da narração",
-    min_value=0.75,
-    max_value=1.25,
-    value=float(parsed.speech_speed) if parsed else 1.0,
-    step=0.05,
-)
+if tts_engine == "kokoro":
+    voice_codes = [code for _, code in KOKORO_VOICES]
+    selected_voice = normalize_voice(parsed.voice if parsed else None)
+    voice = right.selectbox(
+        "Voz da narração",
+        options=voice_codes,
+        index=voice_codes.index(selected_voice),
+        format_func=voice_label,
+        help="Todas as falas usam a voz escolhida em português brasileiro.",
+    )
+    speech_speed = st.slider(
+        "Velocidade da narração",
+        min_value=0.75,
+        max_value=1.25,
+        value=float(parsed.speech_speed) if parsed else 1.0,
+        step=0.05,
+    )
+    chatterbox_settings = None
+else:
+    voice = normalize_voice(parsed.voice if parsed else None)
+    speech_speed = float(parsed.speech_speed) if parsed else 1.0
+    st.info("Chatterbox usa o checkpoint dedicado pt-BR e uma voz interna; os controles abaixo são os compatíveis com esse mecanismo.")
+    cb_left, cb_middle, cb_right = st.columns(3)
+    chatterbox_exaggeration = cb_left.slider("Expressividade", 0.25, 1.0, 0.5, 0.05)
+    chatterbox_cfg = cb_middle.slider("Controle de ritmo", 0.2, 0.8, 0.5, 0.05)
+    chatterbox_temperature = cb_right.slider("Variação", 0.3, 1.2, 0.8, 0.05)
+    chatterbox_settings = {
+        "exaggeration": chatterbox_exaggeration,
+        "cfg_weight": chatterbox_cfg,
+        "temperature": chatterbox_temperature,
+    }
 
 music_upload = st.file_uploader("Música de fundo opcional (com direitos de uso)", type=["mp3", "wav", "m4a", "aac"])
 
@@ -111,8 +138,9 @@ can_generate = project_uploaded and parsed is not None and images_upload is not 
 if st.button("Gerar Short", type="primary", disabled=not can_generate, use_container_width=True):
     project = VideoProject.from_json_text(project_text)
     project.captions.enabled = captions_enabled
-    project.voice = voice
-    project.speech_speed = speech_speed
+    if tts_engine == "kokoro":
+        project.voice = voice
+        project.speech_speed = speech_speed
     if music_upload is not None:
         music_dir = Path(os.getenv("INPUT_DIR", "/workspace/input")) / "music"
         music_dir.mkdir(parents=True, exist_ok=True)
@@ -123,18 +151,24 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
 
     progress_bar = st.progress(0.0, text="Preparando validação…")
     status_text = st.empty()
+    progress_started = time.perf_counter()
 
     def update_progress(message: str, fraction: float | None = None):
-        status_text.info(message)
+        elapsed = time.perf_counter() - progress_started
+        status_text.info(f"{message}  ·  decorrido: {elapsed:.0f}s")
         if fraction is not None:
             progress_bar.progress(min(1.0, max(0.0, fraction)), text=message)
 
     try:
-        with st.spinner("Validando ZIP, gerando voz Kokoro e renderizando o Short…"):
-            output_video = ShortPipeline(progress=update_progress).run(project, images_upload.getvalue())
+        with st.spinner("Gerando o Short…"):
+            output_video = ShortPipeline(
+                progress=update_progress,
+                tts_engine=tts_engine,
+                chatterbox_settings=chatterbox_settings,
+            ).run(project, images_upload.getvalue())
         status_text.success("Short finalizado.")
         progress_bar.progress(1.0, text="Pronto")
-        st.video(str(output_video))
+        st.video(str(output_video), width=VIDEO_PREVIEW_WIDTH)
         st.download_button(
             "Baixar MP4",
             data=output_video.read_bytes(),

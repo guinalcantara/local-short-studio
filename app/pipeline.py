@@ -15,6 +15,8 @@ from app.image_archive import ImageZipValidation, validate_image_zip
 from app.renderer import load_profiles, render_video
 from app.schemas import VideoProject
 from app.tts import KokoroTTS, SAMPLE_RATE, split_sentences
+from app.tts_chatterbox import ChatterboxPTBRTTS
+from app.voices import normalize_tts_engine, tts_engine_label
 
 
 def slugify(value: str) -> str:
@@ -27,12 +29,13 @@ def _write_audio(audio: np.ndarray, path: Path) -> None:
     sf.write(path, audio, SAMPLE_RATE, subtype="PCM_16")
 
 
-def _build_voice_track(tts: KokoroTTS, project: VideoProject, audio_dir: Path, padding_seconds: float, progress):
+def _build_voice_track(tts, project: VideoProject, audio_dir: Path, padding_seconds: float, progress):
     cues: list[CaptionCue] = []
     audio_parts: list[np.ndarray] = []
     scene_durations: list[float] = []
     cursor = 0.0
     try:
+        total_scenes = max(1, len(project.scenes))
         for index, scene in enumerate(project.scenes):
             progress(f"Gerando narração {index + 1}/{len(project.scenes)}: {scene.id}", 0.20 + 0.55 * (index / len(project.scenes)))
             scene_audio: list[np.ndarray] = []
@@ -55,6 +58,7 @@ def _build_voice_track(tts: KokoroTTS, project: VideoProject, audio_dir: Path, p
             scene_durations.append(len(combined) / SAMPLE_RATE)
             cues.extend(scene_cues)
             cursor += scene_durations[-1]
+            progress(f"Narracao {index + 1}/{total_scenes} concluida.", 0.18 + 0.54 * ((index + 1) / total_scenes))
             if index < len(project.scenes) - 1:
                 gap = np.zeros(round(SAMPLE_RATE * padding_seconds), dtype=np.float32)
                 audio_parts.append(gap)
@@ -69,12 +73,16 @@ def _build_voice_track(tts: KokoroTTS, project: VideoProject, audio_dir: Path, p
 
 
 class ShortPipeline:
-    def __init__(self, progress=None):
+    def __init__(self, progress=None, tts_engine: str = "kokoro", chatterbox_settings: dict[str, float] | None = None):
         self.progress = progress or (lambda message, fraction=None: None)
         self.profiles = load_profiles()
         self.output_root = Path(os.getenv("OUTPUT_DIR", "/workspace/output"))
         self.input_root = Path(os.getenv("INPUT_DIR", "/workspace/input"))
-        self.tts = KokoroTTS()
+        self.tts_engine = normalize_tts_engine(tts_engine)
+        if self.tts_engine == "kokoro":
+            self.tts = KokoroTTS()
+        else:
+            self.tts = ChatterboxPTBRTTS(**(chatterbox_settings or {}))
 
     def run(self, project: VideoProject, image_zip: bytes | bytearray | memoryview | str | Path | BinaryIO) -> Path:
         profile = self.profiles.get(project.profile)
@@ -110,10 +118,19 @@ class ShortPipeline:
             target.write_bytes(image.data)
             image_paths.append(target)
 
-        if not torch.cuda.is_available():
+        if getattr(self.tts, "device", "cuda") == "cuda" and not torch.cuda.is_available():
+            if self.tts_engine != "kokoro":
+                raise RuntimeError(
+                    f"CUDA nao esta disponivel para {tts_engine_label(self.tts_engine)}. "
+                    "Confira driver, WSL 2 e Docker Desktop."
+                )
             raise RuntimeError("CUDA não está disponível para o Kokoro. Confira driver, WSL 2 e Docker Desktop.")
 
         padding_seconds = float(profile.get("audio_padding_seconds", 0.15))
+        self.progress(
+            f"Preparando {tts_engine_label(self.tts_engine)}; a primeira execucao pode baixar os pesos...",
+            0.16,
+        )
         narration_path, cues, scene_durations = _build_voice_track(
             self.tts, project, audio_dir, padding_seconds, self.progress
         )
@@ -140,6 +157,7 @@ class ShortPipeline:
             captions_enabled=project.captions.enabled,
             music_path=music_path,
             caption_font=os.getenv("CAPTION_FONT", "Inter"),
+            progress=self.progress,
         )
         self.progress("Short renderizado.", 1.0)
         return output_video

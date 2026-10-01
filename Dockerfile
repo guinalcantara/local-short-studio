@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg fonts-inter fonts-dejavu-core fontconfig libsndfile1 espeak-ng \
+    ffmpeg fonts-inter fonts-dejavu-core fontconfig libsndfile1 espeak-ng git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

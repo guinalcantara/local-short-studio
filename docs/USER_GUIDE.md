@@ -37,7 +37,11 @@ Na interface:
 
 O ZIP é lido em memória e não é extraído para um caminho controlado pelo arquivo. Caminhos absolutos, `..`, subpastas múltiplas, symlinks, arquivos criptografados, extensões inesperadas, imagens inválidas e limites excedidos bloqueiam a geração.
 
-## 4. Voz, música e legendas
+## 4. Mecanismo de voz, música e legendas
+
+No seletor **Mecanismo de narração**, escolha uma alternativa para cada geração. Essa escolha é da interface e não altera o JSON do projeto.
+
+### Kokoro pt-BR
 
 O seletor **Voz da narração** oferece somente vozes Kokoro pt-BR:
 
@@ -49,9 +53,15 @@ A voz válida do JSON é selecionada inicialmente; um código inválido volta pa
 
 Música é opcional e deve ter licença de uso. Legendas são opcionais: quando ligadas, o vídeo recebe burn-in e um arquivo `.srt` é salvo junto.
 
+### Chatterbox PT-BR
+
+Chatterbox usa o ajuste dedicado `ResembleAI/Chatterbox-Multilingual-pt-br`, com o idioma `pt`, em CUDA. O primeiro uso baixa os pesos e os componentes compartilhados do Hugging Face; o cache é persistido em `models/kokoro/`, portanto as gerações seguintes não baixam tudo novamente.
+
+Em vez de voz e velocidade do Kokoro, a interface mostra **Expressividade**, **Controle de ritmo** e **Variação**, que são os controles compatíveis com Chatterbox. Se o download, o modelo ou a CUDA falharem, a geração é interrompida com erro; não há troca automática para Kokoro.
+
 ## 5. Saída
 
-O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera os WAVs e a narração com Kokoro em CUDA, e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg.
+O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera os WAVs com o mecanismo escolhido em CUDA, e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg. Durante a montagem, a barra informa a cena atual, as cenas concluídas e a etapa final de transições/áudio.
 
 O arquivo `project.json` preserva o bloco `youtube`, se existir. Esse bloco é somente preparação para uma tarefa futura; esta versão não publica nada.
 
