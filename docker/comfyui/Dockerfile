@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /opt
 RUN git clone --depth 1 --branch v0.38.0 https://github.com/Comfy-Org/ComfyUI.git /opt/ComfyUI
 WORKDIR /opt/ComfyUI
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip --break-system-packages && \
+    pip install --break-system-packages -r requirements.txt
 
 EXPOSE 8188
 CMD ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188", "--lowvram"]
-

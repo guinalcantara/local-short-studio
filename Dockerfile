@@ -3,6 +3,7 @@ FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/workspace \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
