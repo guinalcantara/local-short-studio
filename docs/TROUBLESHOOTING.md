@@ -1,55 +1,66 @@
 # Solução de problemas
 
-## A aplicação diz que CUDA não foi detectada
+## O botão “Gerar Short” está desativado
 
-1. Confira se o driver NVIDIA do Windows suporta CUDA 13; atualize-o e reinicie o computador se necessário.
-2. Atualize WSL: `wsl --update`.
-3. Verifique o backend WSL 2 em Docker Desktop.
-4. Reinicie Docker Desktop e confira no app o nome da GPU.
-5. Veja `docker compose logs app comfyui`.
+Confirme que:
 
-O suporte GPU do Docker Desktop para Windows depende do backend WSL 2 e de driver/kernel compatíveis. ComfyUI usa CUDA 13.0 (RTX 2060/Turing é compatível); não instale um driver Linux NVIDIA dentro do container: o host Windows fornece o driver.
+- o JSON foi enviado e é válido;
+- cada cena possui `image_path` com extensão PNG, JPG, JPEG ou WebP;
+- o ZIP foi enviado;
+- cada basename do JSON aparece exatamente uma vez no ZIP.
 
-## ComfyUI abre, mas não gera
+O app mostra a quantidade e os nomes encontrados antes de liberar a geração.
 
-- Confirme que o checkpoint existe em `models/checkpoints/`.
-- Verifique `CHECKPOINT_NAME` no `.env`; diferencia maiúsculas e extensão.
-- Abra `http://localhost:8188` e leia o erro no terminal/log do serviço.
-- Faça o primeiro teste com 512×896, 18 passos e uma cena.
-- Evite carregar outros modelos pesados na GPU durante o Short.
+## Imagem ausente ou nome divergente
 
-## Erro de memória CUDA
+`image_path` é resolvido por basename, sem caminho. `cena_01.png` não corresponde a `cena-01.png`, a uma pasta adicional ou a outro nome. Corrija o JSON ou renomeie o membro do ZIP.
 
-- O projeto pede ao ComfyUI para descarregar modelos antes do Kokoro. Se outra aplicação reservou a VRAM, feche-a e rode novamente.
-- Mantenha uma cena por amostra; reduza `IMAGE_STEPS` para 14 e a resolução para 512×768 se o checkpoint exceder 6 GB.
-- A RTX 2060 tem 6 GB físicos; configurações de 768×1365 ou vários lotes não são o alvo inicial.
-- Se a memória do sistema for pressionada, feche jogos e ajuste os recursos do WSL/Docker Desktop.
+## Basename duplicado
 
-## Kokoro não encontra a voz ou falha ao carregar
+Não use dois arquivos com o mesmo nome, mesmo em pastas diferentes ou com diferença apenas de maiúsculas/minúsculas. O app bloqueia para evitar que uma cena receba a imagem errada.
 
-- Use `TTS_VOICE=pf_dora` como primeira configuração pt-BR.
-- Confira o valor do campo Voz Kokoro na interface.
-- A primeira execução precisa baixar pesos/cache; mantenha a rede disponível até o download completar.
-- Confirme que o container `app` vê CUDA e rode `docker compose logs app`.
+## ZIP inválido, protegido ou grande demais
 
-## FFmpeg acusa fonte ou legendas
+O app rejeita ZIP corrompido, criptografado, com symlink, caminhos absolutos, `..`, mais de uma subpasta, arquivos inesperados e imagens inválidas. Também limita quantidade, tamanho comprimido/descompactado, bytes por imagem e pixels. Ajuste os limites no `.env` somente se entender o impacto de memória.
 
-- A imagem inclui `fonts-inter` e `fonts-dejavu-core`; reconstruir com `docker compose up --build -d` instala as fontes.
-- Se necessário, desligue legendas e gere o MP4 sem `.srt`.
-- Evite aspas ou caracteres de controle no título/nome do arquivo. O nome do vídeo é convertido para slug seguro.
+Imagens extras válidas são ignoradas com aviso; imagens referenciadas ausentes não são ignoradas.
 
-## FFmpeg não encontra NVENC
+## Resolução ou formato incompatível
 
-Defina `VIDEO_ENCODER=libx264` em `.env`, que usa CPU para codificar. A geração de imagens/voz continua em CUDA. `VIDEO_ENCODER=auto` escolhe NVENC quando ele aparece na lista do FFmpeg.
+Use PNG, JPG, JPEG ou WebP válidos. Imagens excessivamente grandes podem exceder `ZIP_MAX_IMAGE_PIXELS` ou `ZIP_MAX_IMAGE_BYTES`; redimensione-as antes de criar o ZIP.
 
-## Docker não inicia os containers
+## CUDA/Kokoro não detectado
 
-- Confirme que o Docker Desktop está iniciado e que `docker compose version` funciona no PowerShell.
-- Rode `docker compose logs --tail=200 app comfyui`.
-- Pare stacks antigos que usem as portas 8501/8188 ou mude `APP_PORT`/`COMFYUI_PORT` no `.env`.
-- Se uma build parcial deixou recursos desatualizados, rode `docker compose down` e novamente `docker compose up --build -d`.
+```powershell
+docker compose ps
+docker compose logs --tail=200 app
+docker compose exec app python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
+```
 
-## Gerar uma cena novamente
+Confira o driver NVIDIA no Windows, o backend WSL 2 e se nenhum programa está ocupando toda a VRAM. O CUDA é usado pelo Kokoro; não é necessário instalar driver NVIDIA Linux dentro do container.
 
-Cada execução salva seus resultados em uma pasta nova. Use o projeto JSON e seed da cena para reproduzir a saída; para gerar outra variação, troque o seed e execute de novo. A regeneração de uma cena isolada será adicionada à interface numa iteração futura.
+## Kokoro não encontra pesos ou voz
 
+A primeira narração pode baixar/cachear pesos em `models/kokoro/`. Mantenha rede disponível nessa primeira execução. Use uma das vozes `pf_dora`, `pm_alex` ou `pm_santa`; códigos inválidos são normalizados para Dora na interface.
+
+## FFmpeg, fontes ou legendas
+
+O app instala FFmpeg, Inter e fontes sans-serif na imagem. Se o problema ocorrer apenas com legendas, desligue-as para isolar a montagem; depois confira `docker compose logs app`.
+
+## Docker não inicia
+
+```powershell
+docker compose config
+docker compose up --build -d
+docker compose ps
+```
+
+O comando padrão não precisa construir ou iniciar ComfyUI. Portas padrão: `8501` para o app. Para parar e recriar somente o app após alterar o código:
+
+```powershell
+docker compose up --build -d app
+```
+
+## Publicação futura
+
+O bloco `youtube` é apenas metadado validado e preservado. Nenhuma credencial, OAuth, upload, legenda via API ou agendamento é executado nesta versão.

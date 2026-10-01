@@ -1,5 +1,6 @@
 services:
   comfyui:
+    profiles: ["legacy-image"]
     build:
       context: ./docker/comfyui
     container_name: local-short-studio-comfyui
@@ -30,8 +31,6 @@ services:
       dockerfile: Dockerfile
     container_name: local-short-studio-app
     restart: unless-stopped
-    depends_on:
-      - comfyui
     ports:
       - "127.0.0.1:${APP_PORT:-8501}:8501"
     volumes:
@@ -39,16 +38,8 @@ services:
       - ./output:/workspace/output
       - ./models/kokoro:/root/.cache/huggingface
       - ./config:/workspace/config:ro
-      - ./workflows:/workspace/workflows:ro
       - ./assets/fonts:/workspace/assets/fonts:ro
     environment:
-      COMFYUI_URL: http://comfyui:8188
-      COMFYUI_WORKFLOW: /workspace/workflows/sd15_portrait_api.json
-      CHECKPOINT_NAME: ${CHECKPOINT_NAME:-sd-v1-5-pruned-emaonly-fp16.safetensors}
-      IMAGE_WIDTH: ${IMAGE_WIDTH:-512}
-      IMAGE_HEIGHT: ${IMAGE_HEIGHT:-896}
-      IMAGE_STEPS: ${IMAGE_STEPS:-18}
-      IMAGE_CFG: ${IMAGE_CFG:-6.5}
       TTS_DEVICE: ${TTS_DEVICE:-cuda}
       TTS_VOICE: ${TTS_VOICE:-pf_dora}
       VIDEO_ENCODER: ${VIDEO_ENCODER:-auto}

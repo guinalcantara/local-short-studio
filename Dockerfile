@@ -16,7 +16,6 @@ RUN pip install --upgrade pip && pip install -r /workspace/requirements.txt
 
 COPY app /workspace/app
 COPY config /workspace/config
-COPY workflows /workspace/workflows
 COPY assets /workspace/assets
 
 EXPOSE 8501

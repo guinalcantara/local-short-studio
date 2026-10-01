@@ -1,26 +1,21 @@
 # Guia do usuário
 
-## 1. Preparar a máquina
+## 1. Preparar os arquivos
 
-O Docker Desktop no Windows encaminha GPU NVIDIA aos containers através de WSL 2. Atualize o driver NVIDIA para uma versão que suporte CUDA 13 e mantenha o kernel WSL atualizado. No PowerShell, se necessário:
+Crie um JSON com `title`, `profile`, `voice`, `speech_speed`, `visual_style`, `captions` e `scenes`. Cada cena precisa de:
 
-```powershell
-wsl --update
-```
+- `id`: identificador seguro;
+- `narration`: texto em português brasileiro;
+- `image_path`: basename obrigatório, como `cena_01_gancho.png`;
+- `motion`: `slow_push_in`, `slow_pull_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static` ou `auto`.
 
-Confirme em Docker Desktop que o backend WSL 2 está ativo. Atualize o `.env.example` para `.env` e configure o nome do checkpoint.
+O campo `image_prompt` não faz parte do esquema ativo. As imagens já vêm prontas no ZIP. O campo `seed` continua aceito por compatibilidade, mas não é usado para gerar imagens.
 
-## 2. Obter um checkpoint
+Monte `imagens_cenas.zip` com PNG, JPG, JPEG ou WebP. Os arquivos podem estar na raiz ou todos dentro de uma única subpasta. Não use caminhos como `../cena.png` no JSON.
 
-O projeto não empacota pesos de imagem. Escolha um checkpoint SD 1.5 em `.safetensors` cuja licença permita seu uso pretendido e coloque-o em:
+Narrações devem evitar abreviações: escreva “tiranossauro rex”, nunca “T. rex”, “T-Rex” ou “T rex”.
 
-```text
-models/checkpoints/
-```
-
-No `.env`, `CHECKPOINT_NAME` deve ser exatamente o nome do arquivo. O modelo pode ser obtido do repositório oficial de um checkpoint público compatível com ComfyUI. Leia e aceite os termos/licença desse modelo antes de usá-lo.
-
-## 3. Iniciar os containers
+## 2. Iniciar
 
 Na pasta do projeto:
 
@@ -28,76 +23,54 @@ Na pasta do projeto:
 docker compose up --build -d
 ```
 
-Na primeira vez, o Docker baixa as imagens base CUDA e constrói os serviços; a imagem ComfyUI usa PyTorch 2.14/CUDA 13.0 e fica fixada na versão v0.38.0. O app de narração usa um ambiente PyTorch/CUDA separado. O cache do Kokoro é salvo em `models/kokoro/`. Acesse:
+Abra `http://localhost:8501`. O serviço padrão é somente o app; ele não depende do ComfyUI nem de checkpoint de Stable Diffusion.
 
-- Aplicação: `http://localhost:8501`
-- ComfyUI para diagnóstico: `http://localhost:8188`
+## 3. Enviar e validar
 
-Para consultar logs:
+Na interface:
 
-```powershell
-docker compose logs -f app
-docker compose logs -f comfyui
-```
+1. envie o projeto `.json`;
+2. revise o JSON no editor;
+3. envie `imagens_cenas.zip`;
+4. confira quantidade, nomes encontrados, imagens ausentes e avisos de imagens extras;
+5. só depois escolha a voz e gere.
 
-## 4. Preparar cenas
+O ZIP é lido em memória e não é extraído para um caminho controlado pelo arquivo. Caminhos absolutos, `..`, subpastas múltiplas, symlinks, arquivos criptografados, extensões inesperadas, imagens inválidas e limites excedidos bloqueiam a geração.
 
-Baixe o arquivo de modelo no app ou use `examples/modelo_projeto.json`. Um projeto contém:
+## 4. Voz, música e legendas
 
-- `title`: nome usado na pasta e no MP4.
-- `profile`: `short_vertical` na primeira entrega.
-- `voice`: ID da voz Kokoro, por padrão `pf_dora`.
-- `speech_speed`: entre 0.75 e 1.25.
-- `visual_style`: direção de arte comum a todas as imagens para manter consistência.
-- `captions.enabled`: legenda desligada ou ligada.
-- `scenes`: lista de cenas com `id`, `narration`, `image_prompt`, `motion`, `seed` opcional e `image_path` opcional.
+O seletor **Voz da narração** oferece somente vozes Kokoro pt-BR:
 
-Movimentos aceitos: `slow_push_in`, `slow_pull_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static` ou `auto`. `auto` alterna movimento entre cenas.
+- Dora — feminina (`pf_dora`);
+- Alex — masculina (`pm_alex`);
+- Santa — masculina (`pm_santa`).
 
-Para usar uma imagem que você já tem, copie-a para `input/` e informe um caminho relativo, como `imagens/cena01.png`. Se `image_path` for preenchido, ComfyUI não gera imagem para aquela cena.
+A voz válida do JSON é selecionada inicialmente; um código inválido volta para Dora. Todas as cenas usam a escolha atual. A velocidade aceita valores de 0.75 a 1.25.
 
-## 5. Legendas e estilo
+Música é opcional e deve ter licença de uso. Legendas são opcionais: quando ligadas, o vídeo recebe burn-in e um arquivo `.srt` é salvo junto.
 
-Desative **Adicionar legendas modernas** para exportar sem texto queimado e sem `.srt`. Ative a opção para salvar um `.srt` e queimar as frases no vídeo. O tema inicial usa Inter semibold/branco, caixa translúcida escura, destaque azul e margens seguras para celular.
+## 5. Saída
 
-Os cues de legenda usam as frases enviadas ao Kokoro e a duração de cada segmento sintetizado. Frases curtas melhoram leitura e sincronização. Fontes ficam disponíveis no container via pacote `fonts-inter`; fontes extras podem ser montadas em `assets/fonts/`.
+O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera os WAVs e a narração com Kokoro em CUDA, e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg.
 
-## 6. Música
+O arquivo `project.json` preserva o bloco `youtube`, se existir. Esse bloco é somente preparação para uma tarefa futura; esta versão não publica nada.
 
-É possível enviar MP3, WAV, M4A ou AAC. A música será misturada a volume baixo. Use somente áudio que tenha autorização/licença de uso; sem arquivo enviado, o Short leva apenas a narração.
+## 6. Limites configuráveis
 
-## 7. Gerar e encontrar o resultado
+Os limites do ZIP ficam em `.env` ou `config/settings.example.env`:
 
-Clique **Gerar Short**. Imagens são criadas em sequência; o projeto pede a ComfyUI para descarregar o checkpoint; Kokoro sintetiza a narração na GPU; então o FFmpeg aplica os movimentos/crossfades e exporta.
+- `ZIP_MAX_FILES`;
+- `ZIP_MAX_COMPRESSED_BYTES`;
+- `ZIP_MAX_UNCOMPRESSED_BYTES`;
+- `ZIP_MAX_IMAGE_BYTES`;
+- `ZIP_MAX_IMAGE_PIXELS`.
 
-Cada execução cria uma pasta em `output/<titulo>_<data>/` com:
+## 7. Serviço legado opcional
 
-- `<titulo>.mp4`: Short final.
-- `project.json`: parâmetros usados para reproduzir/ajustar o projeto.
-- `narration.txt`: texto limpo da voz.
-- `images/`: imagens por cena.
-- `audio/`: WAV de cada cena e faixa completa.
-- `<titulo>.srt`: somente quando legendas estão ativas.
-
-## 8. Personalização e vídeos horizontais futuros
-
-Os perfis ficam em `config/render_profiles.json`. `short_vertical` controla dimensões 9:16, FPS, crossfade, pausa final, fonte e bitrate/qualidade. `video_landscape` já exemplifica 16:9; na fase seguinte, habilite o perfil e atualize a interface para exibi-lo.
-
-Não fixe dimensões em cenas ou no JSON: o renderer recebe tudo pelo perfil. Isso permite reutilizar um roteiro/cena em outro enquadramento, com prompts e recortes próprios.
-
-## 9. Encerrar e atualizar
-
-Parar containers mantendo modelos e resultados:
+ComfyUI/Stable Diffusion não participa da operação normal. Se for necessário investigá-lo em uma tarefa futura, ele está no perfil `legacy-image`:
 
 ```powershell
-docker compose down
+docker compose --profile legacy-image up -d comfyui
 ```
 
-Reconstruir depois de alterações no projeto:
-
-```powershell
-docker compose up --build -d
-```
-
-Para apagar pesos/cache, remova os arquivos de `models/` manualmente. Isso fará novos downloads na próxima execução.
-
+Esse perfil não é necessário para enviar JSON + ZIP ou gerar o Short.

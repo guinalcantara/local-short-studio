@@ -4,13 +4,14 @@ from datetime import datetime
 import os
 from pathlib import Path
 import re
-import shutil
 import soundfile as sf
+from typing import BinaryIO
+
 import numpy as np
 import torch
 
 from app.captions import CaptionCue
-from app.comfy_client import ComfyClient
+from app.image_archive import ImageZipValidation, validate_image_zip
 from app.renderer import load_profiles, render_video
 from app.schemas import VideoProject
 from app.tts import KokoroTTS, SAMPLE_RATE, split_sentences
@@ -33,7 +34,7 @@ def _build_voice_track(tts: KokoroTTS, project: VideoProject, audio_dir: Path, p
     cursor = 0.0
     try:
         for index, scene in enumerate(project.scenes):
-            progress(f"Gerando narração {index + 1}/{len(project.scenes)}: {scene.id}", 0.44 + 0.38 * (index / len(project.scenes)))
+            progress(f"Gerando narração {index + 1}/{len(project.scenes)}: {scene.id}", 0.20 + 0.55 * (index / len(project.scenes)))
             scene_audio: list[np.ndarray] = []
             scene_cues: list[CaptionCue] = []
             sentence_cursor = 0.0
@@ -64,25 +65,33 @@ def _build_voice_track(tts: KokoroTTS, project: VideoProject, audio_dir: Path, p
             scene_durations[index] += padding_seconds
         return narration_path, cues, scene_durations
     finally:
-        # An error in any phrase must not leave Kokoro occupying VRAM for the next run.
         tts.release()
 
 
 class ShortPipeline:
     def __init__(self, progress=None):
         self.progress = progress or (lambda message, fraction=None: None)
-        self.comfy = ComfyClient()
         self.profiles = load_profiles()
         self.output_root = Path(os.getenv("OUTPUT_DIR", "/workspace/output"))
         self.input_root = Path(os.getenv("INPUT_DIR", "/workspace/input"))
         self.tts = KokoroTTS()
 
-    def run(self, project: VideoProject) -> Path:
+    def run(self, project: VideoProject, image_zip: bytes | bytearray | memoryview | str | Path | BinaryIO) -> Path:
         profile = self.profiles.get(project.profile)
         if not profile:
             raise ValueError(f"Perfil não encontrado: {project.profile}")
         if not profile.get("enabled", False):
             raise ValueError(f"O perfil '{project.profile}' está reservado para uma fase futura.")
+
+        self.progress("Validando imagens do ZIP…", 0.05)
+        image_validation: ImageZipValidation = validate_image_zip(
+            image_zip,
+            [scene.image_path for scene in project.scenes],
+        )
+        self.progress(
+            f"{image_validation.image_count} imagens encontradas; {len(project.scenes)} cenas mapeadas.",
+            0.14,
+        )
 
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         project_dir = self.output_root / f"{slugify(project.title)}_{run_id}"
@@ -94,47 +103,15 @@ class ShortPipeline:
         project_path.write_text(project.to_json() + "\n", encoding="utf-8")
         (project_dir / "narration.txt").write_text(project.narration_text() + "\n", encoding="utf-8")
 
-        comfy_ok, comfy_message = self.comfy.health()
-        if not comfy_ok:
-            raise RuntimeError(comfy_message)
-        self.progress(comfy_message, 0.02)
-
         image_paths: list[Path] = []
-        image_width = int(os.getenv("IMAGE_WIDTH", "512"))
-        image_height = int(os.getenv("IMAGE_HEIGHT", "896"))
-        steps = int(os.getenv("IMAGE_STEPS", "18"))
-        cfg = float(os.getenv("IMAGE_CFG", "6.5"))
-        checkpoint = os.getenv("CHECKPOINT_NAME", "sd-v1-5-pruned-emaonly-fp16.safetensors")
-        for index, scene in enumerate(project.scenes):
-            self.progress(f"Gerando imagem {index + 1}/{len(project.scenes)}: {scene.id}", 0.04 + 0.36 * (index / len(project.scenes)))
-            if scene.image_path:
-                supplied = Path(scene.image_path)
-                if not supplied.is_absolute():
-                    supplied = self.input_root / supplied
-                if not supplied.exists():
-                    raise FileNotFoundError(f"Imagem informada na cena {scene.id} não existe: {supplied}")
-                target = image_dir / f"{scene.id}{supplied.suffix.lower()}"
-                shutil.copy2(supplied, target)
-                image_paths.append(target)
-            else:
-                target = image_dir / f"{scene.id}.png"
-                self.comfy.generate_image(
-                    f"{project.visual_style}, {scene.image_prompt}" if project.visual_style else scene.image_prompt,
-                    target,
-                    checkpoint=checkpoint,
-                    width=image_width,
-                    height=image_height,
-                    steps=steps,
-                    cfg=cfg,
-                    seed=scene.seed,
-                )
-                image_paths.append(target)
+        for scene in project.scenes:
+            image = image_validation.image_for(scene.image_path)
+            target = image_dir / f"{scene.id}{Path(image.basename).suffix.lower()}"
+            target.write_bytes(image.data)
+            image_paths.append(target)
 
-        # Release the SD checkpoint before Kokoro loads onto the same 6 GB GPU.
-        self.progress("Liberando VRAM do modelo de imagem…", 0.42)
-        self.comfy.free_memory()
         if not torch.cuda.is_available():
-            raise RuntimeError("CUDA não está disponível para o TTS. Confira driver, WSL 2 e Docker Desktop.")
+            raise RuntimeError("CUDA não está disponível para o Kokoro. Confira driver, WSL 2 e Docker Desktop.")
 
         padding_seconds = float(profile.get("audio_padding_seconds", 0.15))
         narration_path, cues, scene_durations = _build_voice_track(
