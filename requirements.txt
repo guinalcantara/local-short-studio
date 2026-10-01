@@ -4,4 +4,6 @@ kokoro>=0.9.4,<1
 soundfile>=0.12,<1
 pydantic>=2.8,<3
 pillow>=10,<12
-chatterbox-tts==0.1.7
+# The PyPI wheel with the same version can expose the legacy V2 loader.
+# Pin the official source revision that supports the V3 `t3_model` API.
+chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git@5de7a54aa4e5e2baadb0182dde554908b48b85c2

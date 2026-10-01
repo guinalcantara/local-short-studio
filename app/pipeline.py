@@ -73,12 +73,19 @@ def _build_voice_track(tts, project: VideoProject, audio_dir: Path, padding_seco
 
 
 class ShortPipeline:
-    def __init__(self, progress=None, tts_engine: str = "kokoro", chatterbox_settings: dict[str, float] | None = None):
+    def __init__(
+        self,
+        progress=None,
+        tts_engine: str = "kokoro",
+        chatterbox_settings: dict[str, float] | None = None,
+        image_effects_enabled: bool = True,
+    ):
         self.progress = progress or (lambda message, fraction=None: None)
         self.profiles = load_profiles()
         self.output_root = Path(os.getenv("OUTPUT_DIR", "/workspace/output"))
         self.input_root = Path(os.getenv("INPUT_DIR", "/workspace/input"))
         self.tts_engine = normalize_tts_engine(tts_engine)
+        self.image_effects_enabled = bool(image_effects_enabled)
         if self.tts_engine == "kokoro":
             self.tts = KokoroTTS()
         else:
@@ -135,7 +142,12 @@ class ShortPipeline:
             self.tts, project, audio_dir, padding_seconds, self.progress
         )
 
-        self.progress("Aplicando movimentos suaves, transições e formato Short…", 0.86)
+        render_message = (
+            "Aplicando movimentos suaves, transições e formato Short…"
+            if self.image_effects_enabled
+            else "Aplicando transições e formato Short, sem movimentos nas imagens…"
+        )
+        self.progress(render_message, 0.86)
         video_path = project_dir / f"{slugify(project.title)}.mp4"
         music_path = project.music_path
         if music_path:
@@ -154,6 +166,7 @@ class ShortPipeline:
             profile=profile,
             narration_path=narration_path,
             motions=[scene.motion for scene in project.scenes],
+            image_effects_enabled=self.image_effects_enabled,
             captions_enabled=project.captions.enabled,
             music_path=music_path,
             caption_font=os.getenv("CAPTION_FONT", "Inter"),

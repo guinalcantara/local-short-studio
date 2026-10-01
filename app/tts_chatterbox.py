@@ -52,11 +52,12 @@ class ChatterboxPTBRTTS:
         mapping = {
             "ve.pt": base_dir / "ve.pt",
             "conds.pt": base_dir / "conds.pt",
+            # The official PT-BR single-language pack pairs this V3 decoder
+            # with t3_pt_br.safetensors. The upstream loader expects the
+            # generic filename s3gen.pt.
             "s3gen.pt": base_dir / "s3gen_v3.pt",
             "grapheme_mtl_merged_expanded_v1.json": base_dir / "grapheme_mtl_merged_expanded_v1.json",
             "t3_pt_br.safetensors": ptbr_dir / "t3_pt_br.safetensors",
-            # chatterbox-tts 0.1.7 hardcodes this legacy filename in from_local().
-            "t3_mtl23ls_v2.safetensors": ptbr_dir / "t3_pt_br.safetensors",
         }
         for target_name, source in mapping.items():
             self._link(cache_dir / target_name, source)
@@ -95,6 +96,11 @@ class ChatterboxPTBRTTS:
             )
             checkpoint_dir = self._prepare_ptbr_checkpoint(base_dir, ptbr_dir)
             from_local = ChatterboxMultilingualTTS.from_local
+            if "t3_model" not in inspect.signature(from_local).parameters:
+                raise RuntimeError(
+                    "O pacote Chatterbox instalado nao possui a API V3 t3_model. "
+                    "Reconstrua a imagem Docker para instalar o commit oficial fixado."
+                )
             original_load_state_dict = S3Gen.load_state_dict
 
             def load_v3_state_dict(instance, state_dict, *args, **kwargs):
@@ -113,17 +119,11 @@ class ChatterboxPTBRTTS:
 
             S3Gen.load_state_dict = load_v3_state_dict
             try:
-                if "t3_model" in inspect.signature(from_local).parameters:
-                    self.model = from_local(
-                        checkpoint_dir,
-                        device=self.device,
-                        t3_model="t3_pt_br.safetensors",
-                    )
-                else:
-                    # The installed 0.1.7 wheel loads t3_mtl23ls_v2.safetensors
-                    # unconditionally; the symlink above points that name to the
-                    # dedicated Brazilian Portuguese checkpoint.
-                    self.model = from_local(checkpoint_dir, self.device)
+                self.model = from_local(
+                    checkpoint_dir,
+                    device=self.device,
+                    t3_model="t3_pt_br.safetensors",
+                )
             finally:
                 S3Gen.load_state_dict = original_load_state_dict
             return self.model

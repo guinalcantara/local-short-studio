@@ -106,6 +106,7 @@ def render_video(
     caption_font: str = "Inter",
     encoder_mode: str | None = None,
     assets_dir: str | Path = "/workspace/assets",
+    image_effects_enabled: bool = True,
     progress=None,
 ) -> Path:
     if not image_paths:
@@ -152,25 +153,35 @@ def render_video(
         source = Path(image_path)
         motion_name = resolve_motion(motion, index)
         if progress:
-            progress(f"Renderizando cena {index + 1}/{len(image_paths)} ({motion_name})...", 0.86 + 0.09 * (index / len(image_paths)))
+            effect_label = motion_name if image_effects_enabled else "imagem estática"
+            progress(f"Renderizando cena {index + 1}/{len(image_paths)} ({effect_label})...", 0.86 + 0.09 * (index / len(image_paths)))
         frames = max(2, round(duration * fps))
-        zoom, x_expr, y_expr = _motion_expressions(
-            motion_name,
-            frames,
-            zoom_amount=motion_zoom_amount,
-            pan_amount=motion_pan_amount,
-            easing=motion_easing,
-        )
         clip = work / f"scene_{index:02d}.mp4"
-        overscan_w = round(motion_width * motion_overscan)
-        overscan_h = round(motion_height * motion_overscan)
-        vf = (
-            f"scale={overscan_w}:{overscan_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={overscan_w}:{overscan_h},"
-            f"zoompan=z='{zoom}':x='{x_expr}':y='{y_expr}':d=1:s={motion_width}x{motion_height}:fps={fps},"
-            f"scale={width}:{height}:flags=lanczos,"
-            f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
-        )
+        if image_effects_enabled:
+            zoom, x_expr, y_expr = _motion_expressions(
+                motion_name,
+                frames,
+                zoom_amount=motion_zoom_amount,
+                pan_amount=motion_pan_amount,
+                easing=motion_easing,
+            )
+            overscan_w = round(motion_width * motion_overscan)
+            overscan_h = round(motion_height * motion_overscan)
+            vf = (
+                f"scale={overscan_w}:{overscan_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                f"crop={overscan_w}:{overscan_h},"
+                f"zoompan=z='{zoom}':x='{x_expr}':y='{y_expr}':d=1:s={motion_width}x{motion_height}:fps={fps},"
+                f"scale={width}:{height}:flags=lanczos,"
+                f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
+            )
+        else:
+            # Keep the source frame static and skip the expensive 2x
+            # overscan/zoompan path. The final xfade transitions are unchanged.
+            vf = (
+                f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+                f"crop={width}:{height},fps={fps},"
+                f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
+            )
         _run([
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
             "-loop", "1", "-framerate", str(fps), "-t", f"{duration:.4f}", "-i", str(source),

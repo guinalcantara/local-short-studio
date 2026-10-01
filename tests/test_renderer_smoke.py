@@ -116,6 +116,26 @@ class RendererSmokeTests(unittest.TestCase):
         self.assert_mp4_has_vertical_video_and_audio(output)
         self.assertIn("Teste de legenda moderna", output.with_suffix(".srt").read_text(encoding="utf-8"))
 
+    def test_short_renders_without_image_effects_but_keeps_transition(self):
+        output = self.root / "without_image_effects.mp4"
+        progress_updates = []
+        render_video(
+            self.images,
+            [0.55, 0.55],
+            [],
+            output,
+            profile=self.profile,
+            narration_path=self.audio,
+            motions=["slow_push_in", "pan_left"],
+            captions_enabled=False,
+            encoder_mode="libx264",
+            image_effects_enabled=False,
+            progress=lambda message, fraction=None: progress_updates.append((message, fraction)),
+        )
+        self.assertGreater(output.stat().st_size, 1000)
+        self.assert_mp4_has_vertical_video_and_audio(output)
+        self.assertTrue(any("imagem estática" in message for message, _ in progress_updates))
+
 
 if __name__ == "__main__":
     unittest.main()

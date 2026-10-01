@@ -87,6 +87,11 @@ captions_enabled = left.checkbox(
     value=bool(parsed.captions.enabled) if parsed else False,
     help="Desmarcado: não queima texto no vídeo nem cria arquivo SRT.",
 )
+image_effects_enabled = st.checkbox(
+    "Aplicar movimentos suaves nas imagens",
+    value=True,
+    help="Desmarque para testar a narração e as transições sem aplicar zoom ou panorâmica. As transições entre cenas continuam ativas.",
+)
 if tts_engine == "kokoro":
     voice_codes = [code for _, code in KOKORO_VOICES]
     selected_voice = normalize_voice(parsed.voice if parsed else None)
@@ -165,6 +170,7 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
                 progress=update_progress,
                 tts_engine=tts_engine,
                 chatterbox_settings=chatterbox_settings,
+                image_effects_enabled=image_effects_enabled,
             ).run(project, images_upload.getvalue())
         status_text.success("Short finalizado.")
         progress_bar.progress(1.0, text="Pronto")
