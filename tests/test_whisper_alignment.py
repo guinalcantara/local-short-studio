@@ -82,6 +82,25 @@ class WhisperAlignmentTests(unittest.TestCase):
         self.assertIn("&H00000000", content)
         self.assertEqual(content.count("Dialogue:"), 1)
 
+    def test_ass_preserves_pauses_between_whisper_words(self):
+        import tempfile
+        from pathlib import Path
+
+        cues = [
+            CaptionCue(
+                0.0,
+                1.0,
+                "Uma pausa",
+                words=(
+                    SimpleNamespace(text="Uma", start=0.0, end=0.20),
+                    SimpleNamespace(text="pausa", start=0.50, end=0.80),
+                ),
+            )
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            content = write_ass(cues, Path(temp_dir) / "captions.ass").read_text(encoding="utf-8-sig")
+        self.assertIn("{\\kf30} ", content)
+
 
 if __name__ == "__main__":
     unittest.main()

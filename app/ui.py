@@ -52,7 +52,7 @@ st.download_button(
     mime="application/json",
 )
 
-with st.expander("Revisar roteiro e metadados", expanded=True):
+with st.expander("Revisar roteiro e metadados", expanded=False):
     project_text = st.text_area(
         "JSON do projeto",
         value=project_text,
@@ -84,7 +84,7 @@ tts_engine = st.selectbox(
 left, right = st.columns(2)
 captions_enabled = left.checkbox(
     "Adicionar legendas modernas",
-    value=bool(parsed.captions.enabled) if parsed else False,
+    value=True,
     help="Usa fonte Inter, no máximo duas linhas e destaque progressivo por palavra. Desmarcado: não queima texto no vídeo.",
 )
 image_effects_enabled = st.checkbox(
@@ -132,6 +132,17 @@ else:
 
 music_upload = st.file_uploader("Música de fundo opcional (com direitos de uso)", type=["mp3", "wav", "m4a", "aac"])
 
+music_volume_percent = st.slider(
+    "Volume da música",
+    min_value=0,
+    max_value=100,
+    value=12,
+    step=1,
+    format="%d%%",
+    disabled=music_upload is None,
+    help="Controla apenas a música de fundo; a narração permanece no volume normal.",
+)
+
 zip_validation: ImageZipValidation | None = None
 if images_upload is None:
     st.info("Envie o ZIP de imagens para validar o mapeamento das cenas.")
@@ -177,6 +188,7 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
                 tts_engine=tts_engine,
                 chatterbox_settings=chatterbox_settings,
                 image_effects_enabled=image_effects_enabled,
+                music_volume=music_volume_percent / 100.0,
             ).run(
                 project,
                 images_upload.getvalue(),

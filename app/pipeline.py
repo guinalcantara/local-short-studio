@@ -99,6 +99,7 @@ class ShortPipeline:
         tts_engine: str = "kokoro",
         chatterbox_settings: dict[str, float] | None = None,
         image_effects_enabled: bool = True,
+        music_volume: float = 0.12,
     ):
         self.progress = progress or (lambda message, fraction=None: None)
         self.profiles = load_profiles()
@@ -106,6 +107,7 @@ class ShortPipeline:
         self.input_root = Path(os.getenv("INPUT_DIR", "/workspace/input"))
         self.tts_engine = normalize_tts_engine(tts_engine)
         self.image_effects_enabled = bool(image_effects_enabled)
+        self.music_volume = min(1.0, max(0.0, float(music_volume)))
         if self.tts_engine == "kokoro":
             self.tts = KokoroTTS()
         else:
@@ -210,6 +212,7 @@ class ShortPipeline:
             image_effects_enabled=self.image_effects_enabled,
             captions_enabled=project.captions.enabled,
             music_path=music_path,
+            music_volume=self.music_volume,
             caption_font=os.getenv("CAPTION_FONT", "Inter"),
             progress=self.progress,
         )

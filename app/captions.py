@@ -162,10 +162,15 @@ def _ass_escape(text: str) -> str:
 
 def _karaoke_text(segment: CaptionSegment) -> str:
     if segment.word_timings:
-        return " ".join(
-            f"{{\\kf{max(1, round((word.end - word.start) * 100))}}}{_ass_escape(word.text)}"
-            for word in segment.word_timings
-        )
+        parts: list[str] = []
+        previous_end: float | None = None
+        for word in segment.word_timings:
+            if previous_end is not None:
+                gap = max(0, round((word.start - previous_end) * 100))
+                parts.append(f"{{\\kf{gap}}} " if gap else " ")
+            parts.append(f"{{\\kf{max(1, round((word.end - word.start) * 100))}}}{_ass_escape(word.text)}")
+            previous_end = word.end
+        return "".join(parts)
     total_weight = sum(_word_weight(word) for word in segment.words)
     total_centiseconds = max(1, round((segment.end - segment.start) * 100))
     durations: list[int] = []

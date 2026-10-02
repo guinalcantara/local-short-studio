@@ -103,6 +103,7 @@ def render_video(
     motions: list[str] | None = None,
     captions_enabled: bool,
     music_path: str | Path | None = None,
+    music_volume: float = 0.12,
     caption_font: str = "Inter",
     encoder_mode: str | None = None,
     assets_dir: str | Path = "/workspace/assets",
@@ -131,6 +132,7 @@ def render_video(
     motion_zoom_amount = max(0.0, float(profile.get("motion_zoom_amount", 0.05)))
     motion_pan_amount = max(0.0, float(profile.get("motion_pan_amount", 0.06)))
     motion_easing = str(profile.get("motion_easing", "quintic"))
+    music_volume = min(1.0, max(0.0, float(music_volume)))
     motion_width = round(width * motion_render_scale)
     motion_height = round(height * motion_render_scale)
     use_encoder = encoder_mode or os.getenv("VIDEO_ENCODER", "auto")
@@ -236,7 +238,7 @@ def render_video(
     if has_music:
         graph.append(
             f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[a_voice];"
-            f"[{music_input_index}:a]aresample=48000,volume=0.12,apad=pad_dur=2[a_music];"
+            f"[{music_input_index}:a]aresample=48000,volume={music_volume:.3f},apad=pad_dur=2[a_music];"
             "[a_voice][a_music]amix=inputs=2:duration=first:dropout_transition=2[aout]"
         )
     else:

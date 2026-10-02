@@ -7,6 +7,7 @@ import json
 import tempfile
 import unittest
 import wave
+from unittest.mock import patch
 
 from app.captions import CaptionCue, CaptionWord
 from app.renderer import render_video
@@ -154,6 +155,27 @@ class RendererSmokeTests(unittest.TestCase):
         self.assertGreater(output.stat().st_size, 1000)
         self.assert_mp4_has_vertical_video_and_audio(output)
         self.assertTrue(any("imagem estática" in message for message, _ in progress_updates))
+
+
+    def test_music_volume_is_applied_and_clamped_in_final_mix(self):
+        with patch("app.renderer._run") as run:
+            render_video(
+                self.images,
+                [0.55, 0.55],
+                [],
+                self.root / "music_volume.mp4",
+                profile=self.profile,
+                narration_path=self.audio,
+                motions=["static", "static"],
+                captions_enabled=False,
+                music_path=self.audio,
+                music_volume=1.5,
+                encoder_mode="libx264",
+            )
+
+        final_command = run.call_args.args[0]
+        filter_complex = final_command[final_command.index("-filter_complex") + 1]
+        self.assertIn("volume=1.000", filter_complex)
 
 
 if __name__ == "__main__":
