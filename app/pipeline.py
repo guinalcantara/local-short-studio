@@ -17,6 +17,7 @@ from app.schemas import VideoProject
 from app.tts import KokoroTTS, SAMPLE_RATE, split_sentences
 from app.tts_chatterbox import ChatterboxPTBRTTS
 from app.voices import normalize_tts_engine, tts_engine_label
+from app.whisper_alignment import WhisperAligner
 
 
 VOICE_REFERENCE_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg"}
@@ -173,6 +174,14 @@ class ShortPipeline:
         narration_path, cues, scene_durations = _build_voice_track(
             self.tts, project, audio_dir, padding_seconds, self.progress
         )
+        if project.captions.enabled:
+            self.progress("Sincronizando legendas palavra por palavra com Whisper…", 0.76)
+            aligner = WhisperAligner()
+            try:
+                cues = aligner.transcribe(narration_path, expected_cues=cues)
+            finally:
+                aligner.release()
+            self.progress(f"{len(cues)} trechos sincronizados pelo Whisper.", 0.84)
 
         render_message = (
             "Aplicando movimentos suaves, transições e formato Short…"

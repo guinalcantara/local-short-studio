@@ -86,3 +86,8 @@ docker compose --profile legacy-image up -d comfyui
 ```
 
 Esse perfil não é necessário para enviar JSON + ZIP ou gerar o Short.
+# Sincronizacao das legendas
+
+Com legendas ativas, o audio final e transcrito localmente com Whisper depois da narracao. Os timestamps reais por palavra alimentam o burn-in com fonte Inter, no maximo duas linhas e destaque progressivo por palavra. Na primeira geracao, o modelo `small` pode ser baixado automaticamente; o cache fica em `models/kokoro/`.
+
+O tamanho do modelo, dispositivo e tipo de calculo podem ser ajustados no `.env` com `WHISPER_MODEL`, `WHISPER_DEVICE` e `WHISPER_COMPUTE_TYPE`.

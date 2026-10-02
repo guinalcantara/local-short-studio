@@ -4,12 +4,14 @@ import os
 import tempfile
 import unittest
 from unittest.mock import patch
+from unittest.mock import Mock
 import wave
 import zipfile
 
 from PIL import Image
 
 from app.pipeline import ShortPipeline
+from app.captions import CaptionCue
 from app.schemas import Scene, VideoProject
 
 
@@ -129,6 +131,42 @@ class PipelineZipTests(unittest.TestCase):
             saved_reference = result.parent / "audio" / "voice_reference.wav"
             self.assertEqual(saved_reference.read_bytes(), reference)
             self.assertEqual(pipeline.tts.reference_audio_path, saved_reference)
+
+    def test_pipeline_replaces_estimated_cues_with_whisper_cues(self):
+        project = VideoProject(
+            title="Teste Whisper",
+            scenes=[
+                Scene(id="gancho", narration="Primeira fala.", image_path="gancho.png", motion="static"),
+                Scene(id="contexto", narration="Segunda fala.", image_path="contexto.png", motion="static"),
+            ],
+        )
+        project.captions.enabled = True
+        whisper_cues = [CaptionCue(0.2, 0.8, "Primeira fala.")]
+        whisper = Mock()
+        whisper.transcribe.return_value = whisper_cues
+        with tempfile.TemporaryDirectory() as temp_dir:
+            narration = Path(temp_dir) / "narration.wav"
+            with wave.open(str(narration), "wb") as handle:
+                handle.setnchannels(1)
+                handle.setsampwidth(2)
+                handle.setframerate(24000)
+                handle.writeframes(b"\x00\x00" * 2400)
+
+            def fake_voice_track(_tts, _project, audio_dir, _padding, _progress):
+                target = Path(audio_dir) / "narration.wav"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(narration.read_bytes())
+                return target, [CaptionCue(0.0, 1.0, "estimada")], [0.1, 0.1]
+
+            with patch.dict(os.environ, {"OUTPUT_DIR": temp_dir}), patch("app.pipeline.torch.cuda.is_available", return_value=True), patch(
+                "app.pipeline._build_voice_track", side_effect=fake_voice_track
+            ), patch("app.pipeline.WhisperAligner", return_value=whisper), patch("app.pipeline.render_video") as render_video:
+                render_video.side_effect = lambda *args, **_kwargs: Path(args[3])
+                ShortPipeline(image_effects_enabled=False).run(project, zip_with_images())
+
+            whisper.transcribe.assert_called_once()
+            whisper.release.assert_called_once()
+            self.assertEqual(render_video.call_args.args[2], whisper_cues)
 
 
 if __name__ == "__main__":

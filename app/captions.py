@@ -6,10 +6,18 @@ import re
 
 
 @dataclass
+class CaptionWord:
+    text: str
+    start: float
+    end: float
+
+
+@dataclass
 class CaptionCue:
     start: float
     end: float
     text: str
+    words: tuple[CaptionWord, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -17,6 +25,7 @@ class CaptionSegment:
     start: float
     end: float
     words: tuple[str, ...]
+    word_timings: tuple[CaptionWord, ...] = ()
 
     @property
     def text(self) -> str:
@@ -83,7 +92,8 @@ def caption_segments(
     """Split sentence cues into short, time-estimated karaoke caption groups."""
     segments: list[CaptionSegment] = []
     for cue in cues:
-        words = tuple(re.findall(r"\S+", cue.text))
+        timed_words = tuple(cue.words)
+        words = tuple(word.text for word in timed_words) if timed_words else tuple(re.findall(r"\S+", cue.text))
         if cue.end <= cue.start or not words:
             continue
         groups: list[tuple[str, ...]] = []
@@ -97,6 +107,23 @@ def caption_segments(
                 current = candidate
         if current:
             groups.append(tuple(current))
+
+        if timed_words:
+            timed_index = 0
+            for group in groups:
+                group_timed_words = timed_words[timed_index:timed_index + len(group)]
+                timed_index += len(group)
+                if not group_timed_words:
+                    continue
+                segments.append(
+                    CaptionSegment(
+                        max(cue.start, group_timed_words[0].start),
+                        min(cue.end, group_timed_words[-1].end),
+                        group,
+                        group_timed_words,
+                    )
+                )
+            continue
 
         total_weight = sum(_word_weight(word) for word in words)
         cursor = cue.start
@@ -134,6 +161,11 @@ def _ass_escape(text: str) -> str:
 
 
 def _karaoke_text(segment: CaptionSegment) -> str:
+    if segment.word_timings:
+        return " ".join(
+            f"{{\\kf{max(1, round((word.end - word.start) * 100))}}}{_ass_escape(word.text)}"
+            for word in segment.word_timings
+        )
     total_weight = sum(_word_weight(word) for word in segment.words)
     total_centiseconds = max(1, round((segment.end - segment.start) * 100))
     durations: list[int] = []

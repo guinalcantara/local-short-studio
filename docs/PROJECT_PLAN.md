@@ -59,3 +59,6 @@ O bloco opcional `youtube` contém somente metadados validados e é preservado n
 - reprocessamento seletivo de uma cena;
 - ativação do perfil horizontal;
 - eventual integração opcional de geração de imagens, sem torná-la dependência do fluxo principal.
+# Whisper na sincronizacao
+
+Quando as legendas estao ativas, o fluxo inclui uma etapa de Whisper local entre a narracao e o FFmpeg. Ela extrai timestamps por palavra do WAV final e alimenta os arquivos ASS/SRT e o burn-in progressivo das legendas.

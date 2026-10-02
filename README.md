@@ -1,5 +1,7 @@
 # Local Short Studio
 
+Com legendas ativas, o audio final e transcrito localmente com Whisper depois da narracao. O modelo `small` gera timestamps reais por palavra e fica em cache no volume `models/kokoro/`; a primeira geracao com legendas pode baixar os pesos.
+
 Gere Shorts verticais localmente a partir de um roteiro JSON e de um ZIP com uma imagem por cena. As imagens são preparadas previamente no ChatGPT ou em outra ferramenta; o projeto local faz a narração pt-BR com Kokoro, aplica movimentos/transições e exporta o MP4 com FFmpeg.
 
 ## Fluxo da primeira versão

@@ -83,3 +83,15 @@ docker compose up --build -d app
 ## Publicação futura
 
 O bloco `youtube` é apenas metadado validado e preservado. Nenhuma credencial, OAuth, upload, legenda via API ou agendamento é executado nesta versão.
+# Whisper nao carrega ou a barra fica na sincronizacao
+
+Quando as legendas estao ativas, o Whisper e executado depois da geracao do audio para obter timestamps por palavra. Na primeira execucao, o modelo `small` e baixado e pode levar alguns minutos; depois ele e reutilizado a partir de `models/kokoro/`.
+
+Confira os logs antes de interromper:
+
+```powershell
+docker compose logs --tail=200 app
+docker compose exec app python -c "import torch; print('CUDA:', torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
+```
+
+As variaveis `WHISPER_MODEL`, `WHISPER_DEVICE` e `WHISPER_COMPUTE_TYPE` ficam no `.env`. Para a RTX 2060, os valores padrao sao `small`, `cuda` e `float16`. Essa etapa e adicional a narracao, entao a primeira geracao com legendas pode demorar mais.
