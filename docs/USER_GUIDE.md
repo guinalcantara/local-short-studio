@@ -51,7 +51,7 @@ O seletor **Voz da narração** oferece somente vozes Kokoro pt-BR:
 
 A voz válida do JSON é selecionada inicialmente; um código inválido volta para Dora. Todas as cenas usam a escolha atual. A velocidade aceita valores de 0.75 a 1.25.
 
-Música é opcional e deve ter licença de uso. Legendas são opcionais: quando ligadas, o vídeo recebe burn-in e um arquivo `.srt` é salvo junto.
+Música é opcional e deve ter licença de uso. Legendas são opcionais: quando ligadas, o vídeo recebe burn-in com fonte Inter, no máximo duas linhas e destaque progressivo por palavra. Os arquivos `.srt` e `.ass` também são salvos junto para inspeção.
 
 ### Chatterbox PT-BR
 

@@ -49,7 +49,7 @@ Narrações devem escrever nomes completos para melhorar a pronúncia: use **“
 
 ## Saídas e testes
 
-Cada execução cria `output/<titulo>_<data>/` com JSON, texto, imagens usadas, WAVs, MP4 e SRT quando as legendas estão ativas.
+Cada execução cria `output/<titulo>_<data>/` com JSON, texto, imagens usadas, WAVs, MP4 e arquivos SRT/ASS quando as legendas estão ativas.
 
 ```powershell
 python -m compileall app

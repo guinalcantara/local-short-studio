@@ -64,7 +64,7 @@ O renderer cria cada cena em alta resolução interna, aplica pan/zoom e depois 
 
 ## FFmpeg, fontes ou legendas
 
-O app instala FFmpeg, Inter e fontes sans-serif na imagem. Se o problema ocorrer apenas com legendas, desligue-as para isolar a montagem; depois confira `docker compose logs app`.
+O app instala FFmpeg, Inter e fontes sans-serif na imagem. As legendas renderizadas usam ASS com grupos curtos e destaque progressivo por palavra; o SRT continua sendo salvo para download. Se o problema ocorrer apenas com legendas, desligue-as para isolar a montagem; depois confira `docker compose logs app`.
 
 ## Docker não inicia
 

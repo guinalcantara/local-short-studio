@@ -85,7 +85,7 @@ left, right = st.columns(2)
 captions_enabled = left.checkbox(
     "Adicionar legendas modernas",
     value=bool(parsed.captions.enabled) if parsed else False,
-    help="Desmarcado: não queima texto no vídeo nem cria arquivo SRT.",
+    help="Usa fonte Inter, no máximo duas linhas e destaque progressivo por palavra. Desmarcado: não queima texto no vídeo.",
 )
 image_effects_enabled = st.checkbox(
     "Aplicar movimentos suaves nas imagens",

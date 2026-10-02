@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from app.captions import CaptionCue, write_srt
+from app.captions import CaptionCue, write_ass, write_srt
 
 
 MOTIONS = ["slow_push_in", "slow_pull_out", "pan_left", "pan_right", "pan_up", "pan_down", "static"]
@@ -221,14 +221,15 @@ def render_video(
     if captions_enabled:
         srt_path = write_srt(cues, out.with_suffix(".srt"))
         fonts_dir = Path(assets_dir) / "fonts"
-        style = (
-            f"FontName={caption_font},FontSize={int(profile.get('caption_font_size', 62))},Bold=1,"
-            "PrimaryColour=&H00FFFFFF,OutlineColour=&H00101826,BackColour=&H990E1726,"
-            "BorderStyle=3,Outline=0,Shadow=0,Alignment=2,"
-            f"MarginV={int(profile.get('caption_margin_vertical', 190))},MarginL=105,MarginR=105"
+        ass_path = write_ass(
+            cues,
+            out.with_suffix(".ass"),
+            font_name=caption_font,
+            font_size=int(profile.get("caption_font_size", 52)),
+            margin_vertical=int(profile.get("caption_margin_vertical", 250)),
         )
         graph.append(
-            f"[vbase]subtitles='{_quote_filter_path(srt_path)}':fontsdir='{_quote_filter_path(fonts_dir)}':force_style='{style}'[vcap]"
+            f"[vbase]subtitles='{_quote_filter_path(ass_path)}':fontsdir='{_quote_filter_path(fonts_dir)}'[vcap]"
         )
         video_label = "vcap"
 

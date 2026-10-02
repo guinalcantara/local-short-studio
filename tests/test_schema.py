@@ -1,6 +1,8 @@
 import unittest
 
-from app.captions import srt_timestamp, wrap_caption
+from pathlib import Path
+import tempfile
+from app.captions import CaptionCue, caption_segments, srt_timestamp, wrap_caption, write_ass
 from app.schemas import VideoProject, example_project
 from app.renderer import load_profiles
 from app.voices import DEFAULT_VOICE, normalize_tts_engine, normalize_voice
@@ -89,6 +91,27 @@ class ProjectTests(unittest.TestCase):
         wrapped = wrap_caption("Essa é uma frase um pouco comprida para caber numa legenda vertical moderna", max_chars=25)
         self.assertLessEqual(len(wrapped.splitlines()), 2)
         self.assertEqual(srt_timestamp(61.234), "00:01:01,234")
+
+    def test_karaoke_caption_segments_are_short_and_time_ordered(self):
+        segments = caption_segments([
+            CaptionCue(1.0, 5.0, "Essa legenda deve acompanhar a fala sem ocupar a tela inteira")
+        ])
+        self.assertGreater(len(segments), 1)
+        self.assertAlmostEqual(segments[0].start, 1.0)
+        self.assertAlmostEqual(segments[-1].end, 5.0)
+        self.assertTrue(all(segment.end > segment.start for segment in segments))
+        self.assertTrue(all(len(wrap_caption(segment.text, max_chars=24).splitlines()) <= 2 for segment in segments))
+
+    def test_ass_captions_include_inter_and_karaoke_tags(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = write_ass(
+                [CaptionCue(0.0, 2.0, "Uma legenda curta")],
+                Path(temp_dir) / "captions.ass",
+            )
+            content = target.read_text(encoding="utf-8-sig")
+        self.assertIn("Style: Caption,Inter,52", content)
+        self.assertIn("{\\kf", content)
+        self.assertIn("PlayResX: 1080", content)
 
     def test_future_landscape_profile_exists_but_is_disabled(self):
         profiles = load_profiles("config/render_profiles.json")

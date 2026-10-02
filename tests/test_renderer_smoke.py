@@ -115,6 +115,11 @@ class RendererSmokeTests(unittest.TestCase):
         self.assertGreater(output.stat().st_size, 1000)
         self.assert_mp4_has_vertical_video_and_audio(output)
         self.assertIn("Teste de legenda moderna", output.with_suffix(".srt").read_text(encoding="utf-8"))
+        ass = output.with_suffix(".ass")
+        self.assertTrue(ass.exists())
+        ass_text = ass.read_text(encoding="utf-8-sig")
+        self.assertIn("Style: Caption,Inter,22", ass_text)
+        self.assertIn("{\\kf", ass_text)
 
     def test_short_renders_without_image_effects_but_keeps_transition(self):
         output = self.root / "without_image_effects.mp4"

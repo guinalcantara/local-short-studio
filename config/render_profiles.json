@@ -15,8 +15,8 @@
     "motion_zoom_amount": 0.05,
     "motion_pan_amount": 0.06,
     "motion_easing": "quintic",
-    "caption_font_size": 62,
-    "caption_margin_vertical": 190
+    "caption_font_size": 52,
+    "caption_margin_vertical": 250
   },
   "video_landscape": {
     "label": "Vídeo horizontal (futuro)",
@@ -34,7 +34,7 @@
     "motion_zoom_amount": 0.05,
     "motion_pan_amount": 0.06,
     "motion_easing": "quintic",
-    "caption_font_size": 48,
-    "caption_margin_vertical": 70
+    "caption_font_size": 44,
+    "caption_margin_vertical": 90
   }
 }
