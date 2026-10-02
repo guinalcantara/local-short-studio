@@ -162,7 +162,7 @@ class ChatterboxPTBRTTS:
             ) from exc
         self._reference_loaded_path = resolved_path
 
-    def generate_sentence(self, text: str, voice: str | None = None, speed: float | None = None) -> np.ndarray:
+    def generate_block(self, text: str, voice: str | None = None, speed: float | None = None) -> np.ndarray:
         del voice, speed
         model = self._get_model()
         try:
@@ -187,6 +187,10 @@ class ChatterboxPTBRTTS:
         if not len(array):
             raise RuntimeError("Chatterbox nao produziu audio para esta frase.")
         return array
+
+    def generate_sentence(self, text: str, voice: str | None = None, speed: float | None = None) -> np.ndarray:
+        """Compatibility alias for callers that synthesize one sentence."""
+        return self.generate_block(text, voice=voice, speed=speed)
 
     def release(self) -> None:
         self.model = None

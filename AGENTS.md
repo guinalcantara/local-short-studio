@@ -4,7 +4,7 @@
 
 O projeto gera Shorts verticais localmente a partir de:
 
-1. um projeto JSON com roteiro e uma cena por imagem;
+1. um projeto JSON com roteiro e uma ou mais imagens por cena;
 2. um ZIP enviado pelo usuário com as imagens referenciadas por `image_path`.
 
 O app local gera narração em português brasileiro com Kokoro/CUDA, aplica movimentos de câmera simulados, transições, legendas opcionais e exporta MP4 com FFmpeg.
@@ -12,10 +12,10 @@ O app local gera narração em português brasileiro com Kokoro/CUDA, aplica mov
 ## Regras importantes
 
 - O fluxo padrão não gera imagens e não depende de ComfyUI, Stable Diffusion ou checkpoint.
-- `image_prompt` não pertence ao esquema ativo. Cada cena precisa de `image_path` contendo somente um basename seguro.
+- `image_prompt` não pertence ao esquema ativo. Cada cena precisa de `image_path` contendo somente um basename seguro e pode declarar de 2 a 4 `shots` seguros.
 - O ZIP aceita PNG, JPG, JPEG e WebP na raiz ou em uma única subpasta.
 - Nunca extraia caminhos do ZIP diretamente. Preserve as validações de tamanho, extensão, symlink, criptografia, `..`, caminhos absolutos e duplicidade.
-- Copie para a execução somente as imagens referenciadas pelas cenas.
+- Copie para a execução somente as imagens referenciadas pelas cenas e seus planos.
 - As vozes atuais são exclusivamente `pf_dora`, `pm_alex` e `pm_santa`.
 - O bloco opcional `youtube` é apenas metadado validado e preservado. Não implemente OAuth, upload, publicação ou chamadas à API sem uma tarefa explicitamente autorizada.
 - `video_landscape` existe como perfil futuro, mas permanece desativado.
@@ -23,11 +23,11 @@ O app local gera narração em português brasileiro com Kokoro/CUDA, aplica mov
 
 ## Arquivos principais
 
-- `app/schemas.py`: contrato estrito do JSON, cenas e metadados futuros do YouTube.
+- `app/schemas.py`: contrato estrito do JSON, cenas, planos e metadados futuros do YouTube.
 - `app/image_archive.py`: validação e mapeamento seguro do ZIP.
 - `app/voices.py`: catálogo de vozes Kokoro pt-BR.
 - `app/ui.py`: upload JSON/ZIP, validação, controles de voz, música e legendas.
-- `app/pipeline.py`: ZIP → Kokoro → FFmpeg; não adicionar ComfyUI ao caminho padrão.
+- `app/pipeline.py`: ZIP → Kokoro/Chatterbox → Whisper quando necessário → FFmpeg; não adicionar ComfyUI ao caminho padrão.
 - `app/renderer.py`: pan/zoom, crossfade, legendas e MP4.
 - `docker-compose.yml`: o serviço padrão é somente `app`; ComfyUI fica no perfil legado `legacy-image`.
 - `docs/PROJECT_PLAN.md`, `docs/USER_GUIDE.md` e `docs/TROUBLESHOOTING.md`: documentação normativa do fluxo atual.
@@ -52,7 +52,7 @@ docker compose exec app python -c "import torch; print(torch.cuda.is_available()
 
 O Compose padrão deve listar somente `app` em `docker compose config --services`. O perfil legado só deve ser ativado explicitamente.
 
-Ao alterar Python, execute a suíte completa, incluindo testes de esquema, ZIP, pipeline sem ComfyUI e renderer. Ao alterar JSON/Compose, valide também `examples/modelo_projeto.json` e `docker compose config`.
+Ao alterar Python, execute a suíte completa, incluindo testes de esquema, ZIP, pipeline sem ComfyUI e renderer. Ao alterar JSON/Compose, valide também `examples/modelo_projeto.json`, `examples/modelo_projeto_multiplos_planos.json` e `docker compose config`.
 
 ## Documentação e conteúdo
 

@@ -10,14 +10,14 @@ from typing import BinaryIO
 import numpy as np
 import torch
 
-from app.captions import CaptionCue
+from app.captions import CaptionCue, CaptionWord
 from app.image_archive import ImageZipValidation, validate_image_zip
-from app.renderer import load_profiles, render_video
+from app.renderer import RenderScene, RenderShot, load_profiles, render_video
 from app.schemas import VideoProject
-from app.tts import KokoroTTS, SAMPLE_RATE, split_sentences
+from app.tts import KokoroTTS, SAMPLE_RATE
 from app.tts_chatterbox import ChatterboxPTBRTTS
 from app.voices import normalize_tts_engine, tts_engine_label
-from app.whisper_alignment import WhisperAligner
+from app.whisper_alignment import WhisperAligner, anchor_start_time
 
 
 VOICE_REFERENCE_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg"}
@@ -58,38 +58,98 @@ def _build_voice_track(tts, project: VideoProject, audio_dir: Path, padding_seco
         total_scenes = max(1, len(project.scenes))
         for index, scene in enumerate(project.scenes):
             progress(f"Gerando narração {index + 1}/{len(project.scenes)}: {scene.id}", 0.20 + 0.55 * (index / len(project.scenes)))
-            scene_audio: list[np.ndarray] = []
-            scene_cues: list[CaptionCue] = []
-            sentence_cursor = 0.0
-            for sentence in split_sentences(scene.narration):
-                part = tts.generate_sentence(sentence, voice=project.voice, speed=project.speech_speed)
-                duration = len(part) / SAMPLE_RATE
-                scene_audio.append(part)
-                scene_cues.append(CaptionCue(cursor + sentence_cursor, cursor + sentence_cursor + duration, sentence))
-                sentence_cursor += duration
-                pause = np.zeros(round(SAMPLE_RATE * 0.12), dtype=np.float32)
-                scene_audio.append(pause)
-                sentence_cursor += len(pause) / SAMPLE_RATE
-            if not scene_audio:
-                raise ValueError(f"A cena {scene.id} não tem frases para narrar.")
-            combined = np.concatenate(scene_audio)
+            narration = scene.narration.strip()
+            if not narration:
+                raise ValueError(f"A cena {scene.id} não tem texto para narrar.")
+            combined = tts.generate_block(narration, voice=project.voice, speed=project.speech_speed)
+            if not len(combined):
+                raise RuntimeError(f"O mecanismo de voz não produziu áudio para a cena {scene.id}.")
+            duration = len(combined) / SAMPLE_RATE
             _write_audio(combined, audio_dir / f"{scene.id}.wav")
             audio_parts.append(combined)
-            scene_durations.append(len(combined) / SAMPLE_RATE)
-            cues.extend(scene_cues)
+            scene_durations.append(duration)
+            cues.append(CaptionCue(cursor, cursor + duration, narration))
             cursor += scene_durations[-1]
             progress(f"Narracao {index + 1}/{total_scenes} concluida.", 0.18 + 0.54 * ((index + 1) / total_scenes))
             if index < len(project.scenes) - 1:
                 gap = np.zeros(round(SAMPLE_RATE * padding_seconds), dtype=np.float32)
                 audio_parts.append(gap)
-                cursor += len(gap) / SAMPLE_RATE
+                gap_duration = len(gap) / SAMPLE_RATE
+                cursor += gap_duration
+                scene_durations[-1] += gap_duration
         narration_path = audio_dir / "narration.wav"
         _write_audio(np.concatenate(audio_parts), narration_path)
-        for index in range(len(scene_durations) - 1):
-            scene_durations[index] += padding_seconds
         return narration_path, cues, scene_durations
     finally:
         tts.release()
+
+
+def project_image_paths(project: VideoProject) -> list[str]:
+    """Return every visual image once per plan, without duplicating scene.image_path."""
+    return [shot.image_path for scene in project.scenes for shot in scene.visual_shots()]
+
+
+def _build_render_timelines(
+    project: VideoProject,
+    copied_images: list[list[Path]],
+    scene_durations: list[float],
+    scene_cues: list[CaptionCue],
+    observed_words: tuple[CaptionWord, ...],
+    *,
+    fps: int,
+) -> list[RenderScene]:
+    if not (
+        len(project.scenes) == len(copied_images) == len(scene_durations) == len(scene_cues)
+    ):
+        raise ValueError("Cenas, imagens, áudio e cues precisam ter a mesma quantidade.")
+
+    timelines: list[RenderScene] = []
+    minimum_frames = 3
+    for scene, images, scene_duration, cue in zip(
+        project.scenes, copied_images, scene_durations, scene_cues
+    ):
+        shots = scene.visual_shots()
+        if len(images) != len(shots):
+            raise ValueError(f"Cena {scene.id}: a quantidade de imagens copiadas não corresponde aos planos.")
+        if scene.shots is None:
+            timelines.append(RenderScene((RenderShot(images[0], scene_duration, scene.motion),)))
+            continue
+
+        starts = [cue.start]
+        for shot_index, shot in enumerate(shots[1:], start=1):
+            assert shot.start_phrase is not None
+            starts.append(
+                anchor_start_time(
+                    scene.narration,
+                    shot.start_phrase,
+                    observed_words,
+                    scene_start=cue.start,
+                    scene_end=cue.end,
+                    scene_id=scene.id,
+                    shot_index=shot_index,
+                )
+            )
+        visual_end = cue.start + scene_duration
+        boundaries = starts + [visual_end]
+        durations: list[float] = []
+        for shot_index, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+            frames = round((end - start) * fps)
+            if end <= start or frames < minimum_frames:
+                phrase = shots[shot_index].start_phrase or "início da cena"
+                raise ValueError(
+                    f"Cena {scene.id}, plano {shot_index + 1}, frase {phrase!r}: "
+                    f"a duração visual ficou menor que {minimum_frames} frames; ajuste o roteiro ou a âncora"
+                )
+            durations.append(end - start)
+        timelines.append(
+            RenderScene(
+                tuple(
+                    RenderShot(image, duration, shot.motion or scene.motion)
+                    for image, duration, shot in zip(images, durations, shots)
+                )
+            )
+        )
+    return timelines
 
 
 class ShortPipeline:
@@ -128,12 +188,15 @@ class ShortPipeline:
             raise ValueError(f"O perfil '{project.profile}' está reservado para uma fase futura.")
 
         self.progress("Validando imagens do ZIP…", 0.05)
+        required_image_paths = project_image_paths(project)
         image_validation: ImageZipValidation = validate_image_zip(
             image_zip,
-            [scene.image_path for scene in project.scenes],
+            required_image_paths,
         )
+        plan_count = len(required_image_paths)
         self.progress(
-            f"{image_validation.image_count} imagens encontradas; {len(project.scenes)} cenas mapeadas.",
+            f"{image_validation.image_count} imagens encontradas; "
+            f"{len(project.scenes)} cenas e {plan_count} planos mapeados.",
             0.14,
         )
 
@@ -153,12 +216,22 @@ class ShortPipeline:
             reference_path = _write_voice_reference(voice_reference, voice_reference_name, audio_dir)
             self.tts.set_reference_audio(reference_path)
 
-        image_paths: list[Path] = []
-        for scene in project.scenes:
-            image = image_validation.image_for(scene.image_path)
-            target = image_dir / f"{scene.id}{Path(image.basename).suffix.lower()}"
-            target.write_bytes(image.data)
-            image_paths.append(target)
+        copied_images: list[list[Path]] = []
+        for scene_index, scene in enumerate(project.scenes):
+            scene_images: list[Path] = []
+            for shot_index, shot in enumerate(scene.visual_shots()):
+                image = image_validation.image_for(shot.image_path)
+                suffix = Path(image.basename).suffix.lower()
+                target_name = (
+                    f"{scene.id}{suffix}"
+                    if scene.shots is None
+                    else f"{scene_index + 1:02d}_{scene.id}_shot_{shot_index + 1:02d}{suffix}"
+                )
+                target = image_dir / target_name
+                target.write_bytes(image.data)
+                scene_images.append(target)
+            copied_images.append(scene_images)
+        image_paths = [images[0] for images in copied_images]
 
         if getattr(self.tts, "device", "cuda") == "cuda" and not torch.cuda.is_available():
             if self.tts_engine != "kokoro":
@@ -173,17 +246,36 @@ class ShortPipeline:
             f"Preparando {tts_engine_label(self.tts_engine)}; a primeira execucao pode baixar os pesos...",
             0.16,
         )
-        narration_path, cues, scene_durations = _build_voice_track(
+        narration_path, scene_cues, scene_durations = _build_voice_track(
             self.tts, project, audio_dir, padding_seconds, self.progress
         )
-        if project.captions.enabled:
-            self.progress("Sincronizando legendas palavra por palavra com Whisper…", 0.76)
+        cues = scene_cues
+        observed_words: tuple[CaptionWord, ...] = ()
+        has_multiple_shots = any(scene.shots is not None for scene in project.scenes)
+        if project.captions.enabled or has_multiple_shots:
+            reason = "planos e legendas" if project.captions.enabled and has_multiple_shots else (
+                "planos" if has_multiple_shots else "legendas"
+            )
+            self.progress(f"Sincronizando {reason} palavra por palavra com Whisper…", 0.76)
             aligner = WhisperAligner()
             try:
-                cues = aligner.transcribe(narration_path, expected_cues=cues)
+                transcript = aligner.transcribe_with_words(narration_path, expected_cues=scene_cues)
+                cues = list(transcript.cues)
+                observed_words = transcript.observed_words
             finally:
                 aligner.release()
-            self.progress(f"{len(cues)} trechos sincronizados pelo Whisper.", 0.84)
+            self.progress(f"{len(cues)} blocos sincronizados pelo Whisper.", 0.84)
+
+        scene_timelines = None
+        if has_multiple_shots:
+            scene_timelines = _build_render_timelines(
+                project,
+                copied_images,
+                scene_durations,
+                scene_cues,
+                observed_words,
+                fps=int(profile["fps"]),
+            )
 
         render_message = (
             "Aplicando movimentos suaves, transições e formato Short…"
@@ -209,6 +301,7 @@ class ShortPipeline:
             profile=profile,
             narration_path=narration_path,
             motions=[scene.motion for scene in project.scenes],
+            scene_timelines=scene_timelines,
             image_effects_enabled=self.image_effects_enabled,
             captions_enabled=project.captions.enabled,
             music_path=music_path,

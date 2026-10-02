@@ -1,6 +1,6 @@
 # Local Short Studio — arquitetura atual
 
-**Estado:** primeira versão operacional baseada em roteiro JSON + ZIP de imagens. A publicação em plataformas e a geração local de imagens permanecem fora do fluxo ativo.
+**Estado:** versão operacional baseada em roteiro JSON + ZIP de imagens, com compatibilidade para uma imagem por cena e suporte a múltiplos planos sincronizados. A publicação em plataformas e a geração local de imagens permanecem fora do fluxo ativo.
 
 ## Objetivo
 
@@ -13,14 +13,16 @@ JSON + imagens_cenas.zip
         ↓
 validação de esquema e ZIP seguro
         ↓
-Kokoro pt-BR ou Chatterbox PT-BR em CUDA
+Kokoro pt-BR ou Chatterbox PT-BR em CUDA (um bloco por cena)
         ↓
-FFmpeg: pan/zoom, transições, legendas opcionais
+Whisper quando houver legendas ou múltiplos planos
+        ↓
+FFmpeg: cortes entre planos, pan/zoom, transições entre cenas, legendas opcionais
         ↓
 MP4 9:16 + intermediários
 ```
 
-O app não gera imagens. Cada `image_path` é obrigatório e aponta para um basename no ZIP. O validador aceita imagens na raiz ou em uma única subpasta, bloqueia ZIPs perigosos e mantém o mapeamento cena-imagem sem extrair caminhos controlados pelo arquivo.
+O app não gera imagens. Cada `image_path` é obrigatório e aponta para um basename no ZIP. Cenas antigas usam uma imagem; cenas novas podem declarar de 2 a 4 `shots`, com o primeiro plano igual ao `image_path` da cena e os demais ancorados por `start_phrase`. O validador aceita imagens na raiz ou em uma única subpasta, bloqueia ZIPs perigosos e mantém o mapeamento cena-imagem sem extrair caminhos controlados pelo arquivo.
 
 ## Hardware e serviços
 
@@ -35,7 +37,9 @@ Os serviços não carregam modelo de imagem no fluxo atual. O cache de Kokoro pe
 
 ## Contrato de entrada
 
-O modelo ativo preserva título, perfil, voz, velocidade, estilo visual, legendas, música e cenas. Cada cena contém `id`, `narration`, `image_path`, `motion` e o `seed` opcional histórico. `image_prompt` foi removido e chaves desconhecidas são rejeitadas.
+O modelo ativo preserva título, perfil, voz, velocidade, estilo visual, legendas, música e cenas. Cada cena contém `id`, `narration`, `image_path`, `motion`, o `seed` opcional histórico e `shots` opcional. Cada plano contém apenas `image_path`, `start_phrase` opcional e `motion` opcional. `image_prompt` foi removido e chaves desconhecidas são rejeitadas.
+
+A narração completa de cada cena é gerada em uma única chamada normal do mecanismo de voz, sem pausa fixa inserida entre frases. O padding curto continua existindo somente entre cenas. Quando há `shots`, o Whisper roda mesmo sem legendas visuais; somente correspondências lexicais realmente observadas podem determinar um corte.
 
 O bloco opcional `youtube` contém somente metadados validados e é preservado na exportação. Não há OAuth, upload, publicação, agendamento ou chamadas à API.
 
@@ -47,11 +51,11 @@ O bloco opcional `youtube` contém somente metadados validados e é preservado n
 
 1. `docker compose up --build -d` inicia o app sem ComfyUI.
 2. JSON e ZIP inválidos bloqueiam a geração com mensagens úteis.
-3. As imagens referenciadas são copiadas apenas para a pasta da execução.
+3. Todas as imagens referenciadas pelos planos são validadas antes da voz e copiadas apenas para a pasta da execução.
 4. O mecanismo escolhido usa CUDA sequencialmente para todas as falas; Kokoro e Chatterbox não são usados ao mesmo tempo.
-5. FFmpeg gera MP4 vertical com movimentos, transições, áudio e legendas opcionais.
+5. FFmpeg gera MP4 vertical com cortes secos entre planos, crossfade somente entre cenas, movimentos, áudio e legendas opcionais.
 6. Metadados `youtube` são aceitos, validados e preservados sem publicação.
-7. Testes cobrem esquema, vozes, segurança do ZIP e renderização.
+7. Testes cobrem esquema, voz por bloco, alinhamento lexical, segurança do ZIP e renderização da timeline.
 
 ## Próximas etapas, não implementadas
 
@@ -59,6 +63,6 @@ O bloco opcional `youtube` contém somente metadados validados e é preservado n
 - reprocessamento seletivo de uma cena;
 - ativação do perfil horizontal;
 - eventual integração opcional de geração de imagens, sem torná-la dependência do fluxo principal.
-# Whisper na sincronizacao
+## Whisper na sincronização
 
-Quando as legendas estao ativas, o fluxo inclui uma etapa de Whisper local entre a narracao e o FFmpeg. Ela extrai timestamps por palavra do WAV final e alimenta os arquivos ASS/SRT e o burn-in progressivo das legendas.
+Quando as legendas estão ativas ou há múltiplos planos, o fluxo inclui uma etapa de Whisper local entre a narração e o FFmpeg. Uma única transcrição extrai timestamps por palavra do WAV final e alimenta tanto os cortes visuais quanto os arquivos ASS/SRT e o burn-in progressivo das legendas.

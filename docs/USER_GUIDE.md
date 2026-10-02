@@ -9,6 +9,15 @@ Crie um JSON com `title`, `profile`, `voice`, `speech_speed`, `visual_style`, `c
 - `image_path`: basename obrigatório, como `cena_01_gancho.png`;
 - `motion`: `slow_push_in`, `slow_pull_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static` ou `auto`.
 
+O formato legado, sem `shots`, continua usando `image_path` e `motion` como seu único plano. Para mostrar mais de uma imagem durante a mesma fala, acrescente `shots` com 2 a 4 elementos:
+
+- `shots[0].image_path` deve ser exatamente igual ao `image_path` da cena e não usa `start_phrase`;
+- cada plano seguinte usa uma imagem distinta e uma `start_phrase` não vazia, contígua e presente uma única vez na narração;
+- as âncoras seguem a ordem da narração e não atravessam o fim de uma frase;
+- `shot.motion` é opcional; quando ausente, herda o `motion` da cena.
+
+Veja os dois contratos em `examples/modelo_projeto.json` e `examples/modelo_projeto_multiplos_planos.json`.
+
 O campo `image_prompt` não faz parte do esquema ativo. As imagens já vêm prontas no ZIP. O campo `seed` continua aceito por compatibilidade, mas não é usado para gerar imagens.
 
 Monte `imagens_cenas.zip` com PNG, JPG, JPEG ou WebP. Os arquivos podem estar na raiz ou todos dentro de uma única subpasta. Não use caminhos como `../cena.png` no JSON.
@@ -32,14 +41,16 @@ Na interface:
 1. envie o projeto `.json`;
 2. revise o JSON no editor;
 3. envie `imagens_cenas.zip`;
-4. confira quantidade, nomes encontrados, imagens ausentes e avisos de imagens extras;
+4. confira quantidade de cenas e planos, nomes encontrados, imagens ausentes e avisos de imagens extras;
 5. só depois escolha a voz e gere.
 
 O ZIP é lido em memória e não é extraído para um caminho controlado pelo arquivo. Caminhos absolutos, `..`, subpastas múltiplas, symlinks, arquivos criptografados, extensões inesperadas, imagens inválidas e limites excedidos bloqueiam a geração.
 
+Projetos com `shots` mostram um aviso de que o Whisper será necessário. Isso ocorre mesmo com as legendas desmarcadas, pois os timestamps reais das palavras determinam as trocas de imagem.
+
 ## 4. Mecanismo de voz, música e legendas
 
-No seletor **Mecanismo de narração**, escolha uma alternativa para cada geração. Essa escolha é da interface e não altera o JSON do projeto.
+No seletor **Mecanismo de narração**, escolha uma alternativa para cada geração. Essa escolha é da interface e não altera o JSON do projeto. A narração completa de cada cena é sintetizada como um bloco contínuo; a pontuação orienta as pausas e não é acrescentada uma pausa fixa entre frases.
 
 ### Kokoro pt-BR
 
@@ -63,7 +74,7 @@ O campo **Áudio de referência da sua voz** é opcional. Para reproduzir a iden
 
 ## 5. Saída
 
-O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera os WAVs com o mecanismo escolhido em CUDA, e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg. Durante a montagem, a barra informa a cena atual, as cenas concluídas e a etapa final de transições/áudio.
+O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera um WAV por cena com o mecanismo escolhido em CUDA e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg. Planos da mesma cena usam cortes secos nos instantes alinhados; o crossfade existente continua somente entre cenas. Durante a montagem, a barra informa a cena atual, a quantidade de planos, as cenas concluídas e a etapa final de transições/áudio.
 
 O arquivo `project.json` preserva o bloco `youtube`, se existir. Esse bloco é somente preparação para uma tarefa futura; esta versão não publica nada.
 
@@ -86,8 +97,8 @@ docker compose --profile legacy-image up -d comfyui
 ```
 
 Esse perfil não é necessário para enviar JSON + ZIP ou gerar o Short.
-# Sincronizacao das legendas
+## Sincronização por Whisper
 
-Com legendas ativas, o audio final e transcrito localmente com Whisper depois da narracao. Os timestamps reais por palavra alimentam o burn-in com fonte Inter, no maximo duas linhas e destaque progressivo por palavra. Na primeira geracao, o modelo `small` pode ser baixado automaticamente; o cache fica em `models/kokoro/`.
+Com legendas ativas ou múltiplos planos, o áudio final é transcrito localmente com Whisper depois da narração. Os timestamps reais por palavra alimentam as trocas de plano e, quando solicitadas, as legendas com fonte Inter, no máximo duas linhas e destaque progressivo por palavra. A mesma transcrição é reutilizada para os dois recursos. Na primeira geração, o modelo `small` pode ser baixado automaticamente; o cache fica em `models/kokoro/`.
 
 O tamanho do modelo, dispositivo e tipo de calculo podem ser ajustados no `.env` com `WHISPER_MODEL`, `WHISPER_DEVICE` e `WHISPER_COMPUTE_TYPE`.

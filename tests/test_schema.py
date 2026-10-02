@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 import tempfile
 from app.captions import CaptionCue, caption_segments, srt_timestamp, wrap_caption, write_ass
-from app.schemas import VideoProject, example_project
+from app.schemas import Shot, VideoProject, example_project
 from app.renderer import load_profiles
 from app.voices import DEFAULT_VOICE, normalize_tts_engine, normalize_voice
 
@@ -68,6 +68,67 @@ class ProjectTests(unittest.TestCase):
         data["scenes"][0].pop("image_path")
         with self.assertRaises(ValueError):
             VideoProject.model_validate(data)
+
+    def test_scene_accepts_valid_shots_and_preserves_legacy_image_path(self):
+        data = example_project().model_dump()
+        scene = data["scenes"][0]
+        scene["narration"] = "Os braços parecem pequenos. Mas os fósseis contam outra história."
+        scene["shots"] = [
+            {"image_path": scene["image_path"]},
+            {"image_path": "cena_01_detalhe.png", "start_phrase": "mas os fósseis contam", "motion": "pan_left"},
+        ]
+
+        project = VideoProject.model_validate(data)
+
+        self.assertEqual(project.scenes[0].shots[0].image_path, project.scenes[0].image_path)
+        self.assertEqual(project.scenes[0].shots[1].motion, "pan_left")
+
+    def test_shots_validate_count_first_image_anchors_and_duplicates(self):
+        base = example_project().model_dump()
+        scene = base["scenes"][0]
+        scene["narration"] = "Uma ideia aparece aqui. Outra ideia termina agora."
+
+        invalid_cases = [
+            [{"image_path": scene["image_path"]}],
+            [
+                {"image_path": "outra.png"},
+                {"image_path": "detalhe.png", "start_phrase": "Outra ideia"},
+            ],
+            [
+                {"image_path": scene["image_path"], "start_phrase": "Uma ideia"},
+                {"image_path": "detalhe.png", "start_phrase": "Outra ideia"},
+            ],
+            [
+                {"image_path": scene["image_path"]},
+                {"image_path": scene["image_path"].upper(), "start_phrase": "Outra ideia"},
+            ],
+            [
+                {"image_path": scene["image_path"]},
+                {"image_path": "detalhe.png", "start_phrase": "ideia aparece aqui Outra"},
+            ],
+        ]
+        for shots in invalid_cases:
+            with self.subTest(shots=shots), self.assertRaises(ValueError):
+                VideoProject.model_validate({**base, "scenes": [{**scene, "shots": shots}]})
+
+    def test_shot_anchor_must_be_unique_and_in_narration_order(self):
+        base = example_project().model_dump()
+        scene = base["scenes"][0]
+        scene["narration"] = "A pista surgiu cedo. A pista voltou depois. O final chegou."
+        ambiguous = [
+            {"image_path": scene["image_path"]},
+            {"image_path": "detalhe.png", "start_phrase": "A pista"},
+        ]
+        with self.assertRaisesRegex(ValueError, "mais de uma vez"):
+            VideoProject.model_validate({**base, "scenes": [{**scene, "shots": ambiguous}]})
+
+        out_of_order = [
+            Shot(image_path=scene["image_path"]).model_dump(),
+            Shot(image_path="final.png", start_phrase="O final chegou").model_dump(),
+            Shot(image_path="cedo.png", start_phrase="surgiu cedo").model_dump(),
+        ]
+        with self.assertRaisesRegex(ValueError, "ordem"):
+            VideoProject.model_validate({**base, "scenes": [{**scene, "shots": out_of_order}]})
         data = example_project().model_dump()
         data["scenes"][0]["image_prompt"] = "não deve existir"
         with self.assertRaises(ValueError):
@@ -76,6 +137,8 @@ class ProjectTests(unittest.TestCase):
         data["scenes"][0]["image_path"] = "../cena.png"
         with self.assertRaises(ValueError):
             VideoProject.model_validate(data)
+        with self.assertRaises(ValueError):
+            Shot(image_path="pasta/plano.png")
 
     def test_voice_selection_has_safe_fallback(self):
         self.assertEqual(normalize_voice("pm_alex"), "pm_alex")

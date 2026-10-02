@@ -1,12 +1,12 @@
 # Local Short Studio
 
-Com legendas ativas, o audio final e transcrito localmente com Whisper depois da narracao. O modelo `small` gera timestamps reais por palavra e fica em cache no volume `models/kokoro/`; a primeira geracao com legendas pode baixar os pesos.
+Com legendas ativas ou cenas com múltiplos planos, o áudio final é transcrito localmente com Whisper depois da narração. O modelo `small` gera timestamps reais por palavra e fica em cache no volume `models/kokoro/`; a primeira geração que exigir alinhamento pode baixar os pesos.
 
-Gere Shorts verticais localmente a partir de um roteiro JSON e de um ZIP com uma imagem por cena. As imagens são preparadas previamente no ChatGPT ou em outra ferramenta; o projeto local faz a narração pt-BR com Kokoro, aplica movimentos/transições e exporta o MP4 com FFmpeg.
+Gere Shorts verticais localmente a partir de um roteiro JSON e de um ZIP com uma ou mais imagens por cena. As imagens são preparadas previamente no ChatGPT ou em outra ferramenta; o projeto local faz a narração pt-BR com Kokoro ou Chatterbox, aplica movimentos/transições e exporta o MP4 com FFmpeg.
 
 ## Fluxo da primeira versão
 
-1. Prepare `modelo_projeto.json` com uma cena por imagem.
+1. Prepare `modelo_projeto.json` no formato legado (uma imagem por cena) ou com 2 a 4 `shots` por cena.
 2. Prepare `imagens_cenas.zip` com os arquivos referenciados em `image_path`.
 3. Abra o Streamlit, envie os dois arquivos e corrija qualquer aviso de nomes, formatos ou arquivos ausentes.
 4. Escolha Kokoro ou Chatterbox PT-BR, configure os controles compatíveis, música e legendas, e clique em **Gerar Short**.
@@ -39,7 +39,9 @@ O comando padrão constrói e inicia somente o app. Não exige checkpoint, Comfy
 
 ## Modelo JSON e ZIP
 
-Use [`examples/modelo_projeto.json`](examples/modelo_projeto.json) como base. `image_path` é obrigatório e deve ser somente o nome do arquivo, sem pastas. O ZIP pode conter as imagens na raiz ou em uma única subpasta; o app resolve por basename, valida bytes e copia apenas as imagens usadas para a execução.
+Use [`examples/modelo_projeto.json`](examples/modelo_projeto.json) para o contrato legado ou [`examples/modelo_projeto_multiplos_planos.json`](examples/modelo_projeto_multiplos_planos.json) para múltiplos planos. `image_path` continua obrigatório e deve ser somente o nome do arquivo, sem pastas. O ZIP pode conter as imagens na raiz ou em uma única subpasta; o app resolve por basename, valida bytes e copia apenas as imagens usadas para a execução.
+
+Em uma cena com `shots`, o primeiro plano repete exatamente `scene.image_path` e começa junto com a cena. Cada plano seguinte usa uma imagem distinta e uma `start_phrase` única da narração. A troca acontece no início dessa frase, usando timestamps de palavras realmente reconhecidas pelo Whisper; não há corte no áudio nem transição entre os planos da mesma cena.
 
 O bloco opcional `youtube` é apenas metadado preparado para uma integração futura. Ele é validado e preservado no `project.json`, mas não há OAuth, upload, agendamento ou chamada à API nesta versão.
 
@@ -47,7 +49,7 @@ O seletor de mecanismo de narração fica fora do JSON para preservar o contrato
 
 No Chatterbox, também é possível enviar um áudio de referência de 5 a 10 segundos. Use uma gravação limpa em português brasileiro, sem música, eco ou outras pessoas. O arquivo é usado localmente e salvo somente em `output/<execução>/audio/`; ele não altera o JSON.
 
-Narrações devem escrever nomes completos para melhorar a pronúncia: use **“tiranossauro rex”**, nunca “T. rex”, “T-Rex” ou “T rex”.
+Cada `scene.narration` é sintetizada como um bloco contínuo, preservando as pausas indicadas pela pontuação. Narrações devem escrever nomes completos para melhorar a pronúncia: use **“tiranossauro rex”**, nunca “T. rex”, “T-Rex” ou “T rex”.
 
 ## Saídas e testes
 

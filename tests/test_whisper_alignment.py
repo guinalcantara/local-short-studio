@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 import unittest
 
-from app.captions import CaptionCue, caption_segments, write_ass
-from app.whisper_alignment import align_caption_cues, caption_cues_from_segments
+from app.captions import CaptionCue, CaptionWord, caption_segments, write_ass
+from app.whisper_alignment import anchor_start_time, align_caption_cues, caption_cues_from_segments
 
 
 class WhisperAlignmentTests(unittest.TestCase):
@@ -56,6 +56,41 @@ class WhisperAlignmentTests(unittest.TestCase):
         self.assertEqual([word.text for word in cues[0].words], ["O", "rex", "correu."])
         self.assertEqual(cues[0].words[1].start, 0.35)
         self.assertEqual(cues[0].words[1].end, 0.60)
+
+    def test_anchor_uses_only_lexically_observed_words(self):
+        observed = (
+            CaptionWord("Os", 0.10, 0.25),
+            CaptionWord("fósseis", 0.30, 0.65),
+            CaptionWord("contam", 0.70, 0.95),
+            CaptionWord("mais", 1.00, 1.20),
+        )
+        start = anchor_start_time(
+            "Os fósseis contam mais.",
+            "fósseis contam",
+            observed,
+            scene_start=0.0,
+            scene_end=1.5,
+            scene_id="cena_01",
+            shot_index=1,
+        )
+        self.assertAlmostEqual(start, 0.30)
+
+    def test_interpolated_caption_word_cannot_drive_anchor_cut(self):
+        observed = (
+            CaptionWord("O", 0.10, 0.30),
+            CaptionWord("Hex", 0.35, 0.60),
+            CaptionWord("correu", 0.70, 1.10),
+        )
+        with self.assertRaisesRegex(ValueError, "nao reconheceu lexicalmente"):
+            anchor_start_time(
+                "O rex correu.",
+                "rex correu",
+                observed,
+                scene_start=0.0,
+                scene_end=1.5,
+                scene_id="cena_rex",
+                shot_index=1,
+            )
 
     def test_ass_uses_whisper_karaoke_without_scale_animation(self):
         import tempfile

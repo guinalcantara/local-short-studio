@@ -1,0 +1,68 @@
+{
+  "title": "Os braços do tiranossauro rex",
+  "profile": "short_vertical",
+  "voice": "pf_dora",
+  "speech_speed": 1.0,
+  "visual_style": "cinematic digital illustration, mature visual tone, cohesive blue and amber palette, dramatic natural lighting",
+  "captions": {
+    "enabled": false,
+    "theme": "modern_blue"
+  },
+  "scenes": [
+    {
+      "id": "cena_01_gancho",
+      "narration": "Os braços do tiranossauro rex parecem pequenos demais para um predador tão poderoso. Mas os fósseis contam uma história mais interessante.",
+      "image_path": "cena_01_plano_01.png",
+      "motion": "slow_push_in",
+      "shots": [
+        {
+          "image_path": "cena_01_plano_01.png"
+        },
+        {
+          "image_path": "cena_01_plano_02.png",
+          "start_phrase": "Mas os fósseis contam",
+          "motion": "pan_left"
+        }
+      ]
+    },
+    {
+      "id": "cena_02_funcao",
+      "narration": "Esses membros tinham músculos e articulações funcionais. Eles poderiam ajudar a segurar uma presa bem próxima do peito.",
+      "image_path": "cena_02_plano_01.png",
+      "motion": "slow_pull_out",
+      "shots": [
+        {
+          "image_path": "cena_02_plano_01.png"
+        },
+        {
+          "image_path": "cena_02_plano_02.png",
+          "start_phrase": "Eles poderiam ajudar a segurar"
+        }
+      ]
+    }
+  ],
+  "youtube": {
+    "default_language": "pt-BR",
+    "description": "Uma explicação curta sobre uma possível função dos braços do tiranossauro rex. #Dinossauros #Paleontologia",
+    "tags": [
+      "dinossauros",
+      "tiranossauro rex",
+      "paleontologia"
+    ],
+    "category_id": "27",
+    "status": {
+      "privacy_status": "private",
+      "license": "youtube",
+      "embeddable": true,
+      "public_stats_viewable": true,
+      "self_declared_made_for_kids": false,
+      "contains_synthetic_media": false
+    },
+    "notify_subscribers": true,
+    "captions": {
+      "enabled": true,
+      "language": "pt-BR",
+      "format": "vtt"
+    }
+  }
+}

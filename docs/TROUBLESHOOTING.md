@@ -7,7 +7,8 @@ Confirme que:
 - o JSON foi enviado e é válido;
 - cada cena possui `image_path` com extensão PNG, JPG, JPEG ou WebP;
 - o ZIP foi enviado;
-- cada basename do JSON aparece exatamente uma vez no ZIP.
+- cada basename usado pela cena ou por seus `shots` aparece exatamente uma vez no ZIP;
+- o primeiro plano repete o `image_path` da cena e as demais âncoras são válidas.
 
 O app mostra a quantidade e os nomes encontrados antes de liberar a geração.
 
@@ -24,6 +25,14 @@ Não use dois arquivos com o mesmo nome, mesmo em pastas diferentes ou com difer
 O app rejeita ZIP corrompido, criptografado, com symlink, caminhos absolutos, `..`, mais de uma subpasta, arquivos inesperados e imagens inválidas. Também limita quantidade, tamanho comprimido/descompactado, bytes por imagem e pixels. Ajuste os limites no `.env` somente se entender o impacto de memória.
 
 Imagens extras válidas são ignoradas com aviso; imagens referenciadas ausentes não são ignoradas.
+
+## Frase âncora inválida ou ambígua
+
+Cada `start_phrase` precisa ser uma sequência contígua de palavras dentro de uma única frase da narração e aparecer exatamente uma vez. Pontuação, espaços e maiúsculas/minúsculas não alteram a localização, mas o texto e os acentos das palavras precisam corresponder. Escolha uma frase curta e específica, na ordem em que será falada.
+
+## Whisper não reconheceu uma âncora de plano
+
+Os cortes visuais usam somente palavras realmente reconhecidas, nunca palavras que o sistema interpolou para preservar o texto das legendas. Se a mensagem indicar ausência de alinhamento lexical ou um plano curto demais, ajuste a `start_phrase`, aumente a distância entre âncoras ou simplifique a narração. O pipeline para em vez de trocar a imagem no instante errado.
 
 ## Resolução ou formato incompatível
 
@@ -60,7 +69,7 @@ O app não troca automaticamente para Kokoro. Se aparecer erro de dependência, 
 
 ## Barra parada em uma cena de renderização
 
-O renderer cria cada cena em alta resolução interna, aplica pan/zoom e depois monta as transições. Em uma RTX 2060, várias cenas podem levar minutos, especialmente com `motion_render_scale=2`. A barra deve avançar após cada cena. Enquanto houver novos arquivos em `output/<execução>/render_work/`, o processo está ativo; antes de interromper, verifique `docker compose logs --tail=200 app` e `docker compose ps`.
+O renderer cria cada plano em alta resolução interna, concatena os planos de uma cena com cortes secos e depois monta as transições entre cenas. Em uma RTX 2060, várias imagens podem levar minutos, especialmente com `motion_render_scale=2`. A barra deve avançar após cada cena. Enquanto houver novos arquivos em `output/<execução>/render_work/`, o processo está ativo; antes de interromper, verifique `docker compose logs --tail=200 app` e `docker compose ps`.
 
 ## FFmpeg, fontes ou legendas
 
@@ -83,9 +92,9 @@ docker compose up --build -d app
 ## Publicação futura
 
 O bloco `youtube` é apenas metadado validado e preservado. Nenhuma credencial, OAuth, upload, legenda via API ou agendamento é executado nesta versão.
-# Whisper nao carrega ou a barra fica na sincronizacao
+## Whisper não carrega ou a barra fica na sincronização
 
-Quando as legendas estao ativas, o Whisper e executado depois da geracao do audio para obter timestamps por palavra. Na primeira execucao, o modelo `small` e baixado e pode levar alguns minutos; depois ele e reutilizado a partir de `models/kokoro/`.
+Quando as legendas estão ativas ou o projeto usa `shots`, o Whisper é executado depois da geração do áudio para obter timestamps por palavra. Na primeira execução, o modelo `small` é baixado e pode levar alguns minutos; depois ele é reutilizado a partir de `models/kokoro/`.
 
 Confira os logs antes de interromper:
 
