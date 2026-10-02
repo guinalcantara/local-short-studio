@@ -1,87 +1,77 @@
 # Prompt para gerar roteiro, modelo JSON e ZIP de imagens
 
-Copie este prompt para um chat com geração de imagens. No fim, informe somente o **título ou tema** do Short. O chat deverá entregar `modelo_projeto.json` e `imagens_cenas.zip`, prontos para upload no Local Short Studio.
+Copie as instruções abaixo para um chat com geração de imagens. No fim, informe somente o título ou tema do Short. O chat deverá entregar `modelo_projeto.json` e `imagens_cenas.zip` para o Local Short Studio.
 
-> **Escopo atual:** o modelo inclui metadados organizados para uma futura integração de publicação, mas o aplicativo ainda não enviará vídeos ao YouTube pela API. Todo roteiro, narração e metadado textual deste modelo deve ficar somente em português brasileiro. A estrutura fica preparada para implementação futura; não simule uma publicação.
-
-> **Compatibilidade:** mantenha todos os campos atuais e seus tipos. Os metadados novos ficam em um bloco opcional `youtube`, separado do formato de renderização atual. O aplicativo deve ser atualizado para aceitar explicitamente esse bloco sem rejeitar o restante do projeto. Os arquivos antigos, sem o bloco, continuam válidos.
-
----
+> **Contrato futuro:** este prompt usa `scenes[].shots`. O código atual em `main` rejeita esse campo e ainda renderiza uma imagem por cena. Implemente e valide [o guia de desenvolvimento](../docs/IMPLEMENTAR_PLANOS_E_NARRACAO_NATURAL.md) antes de importar o JSON novo. Até lá, use o prompt antigo do histórico do Git para gerar projetos compatíveis; não afirme que o novo formato já funciona.
 
 ## Instruções para o chat
 
-Crie um YouTube Short em português brasileiro para o projeto **Local Short Studio**, sobre o tema informado. O usuário fornecerá somente o título ou tema. Gere as imagens no ChatGPT. Não peça informações adicionais; tome decisões editoriais razoáveis.
+Crie um YouTube Short em português brasileiro sobre o tema informado. O usuário fornecerá somente o título ou tema. Gere as imagens no ChatGPT. Não peça informações adicionais; tome decisões editoriais razoáveis.
 
-### Roteiro
+### Roteiro e narração
 
-- Duração-alvo: **55 a 70 segundos**, com **125 a 145 palavras faladas** no total. Conte somente o texto das narrações das cenas.
-- Comece com um gancho claro. Desenvolva uma única ideia com ritmo e termine com uma conclusão memorável ou pergunta curta ligada ao tema; não peça inscrição ou like.
-- A narração deve soar natural em português brasileiro na voz Kokoro, velocidade `1.0`. Use `pf_dora` como voz padrão. A interface poderá oferecer Dora (feminina), Alex (masculina) e Santa (masculina), todas em pt-BR.
-- Evite abreviações, siglas difíceis e termos que possam confundir o TTS. Por exemplo, nunca escreva “T. rex”, “T-Rex” ou “T rex”; use “tiranossauro rex”. Faça revisão de todas as falas procurando abreviações. Escreva números por extenso quando isso ajudar a pronúncia.
-- Divida a narração em **6 a 8 cenas** coerentes. Prefira frases curtas para favorecer a narração e as legendas.
-- Para fatos científicos, históricos, religiosos ou atuais, verifique afirmações específicas em fontes confiáveis. Não invente dados. Se fontes forem úteis, cite-as fora dos dois arquivos.
+- Alvo editorial: 55 a 70 segundos e 125 a 145 palavras faladas no total, contando somente `scenes[].narration`. É uma meta, não um motivo para acelerar artificialmente a voz. Informe a duração como estimativa; a duração real depende do TTS.
+- Comece com um gancho claro, desenvolva uma única ideia e termine com uma conclusão memorável ou pergunta curta ligada ao tema. Não peça inscrição ou like.
+- Escreva para fala natural em português brasileiro: blocos de pensamento completos, pontuação que indique pausas e variação de frases curtas e médias. Evite períodos longos, frases telegráficas isoladas e reticências em excesso. Não acrescente marcas como `[pausa]`, SSML ou timestamps à narração.
+- Divida o roteiro em 6 a 8 cenas coerentes. Cada `narration` é um texto contínuo, com uma ou mais frases relacionadas, para ser sintetizado como **um bloco de voz por cena**. A divisão visual em planos não divide a fala nem repete palavras.
+- Use `pf_dora` e `speech_speed: 1.0` como padrão para Kokoro. A interface também oferece Alex e Santa. A voz e a velocidade podem ser ajustadas no aplicativo.
+- Evite abreviações e siglas difíceis para TTS. Escreva “tiranossauro rex”, nunca “T. rex”, “T-Rex” ou “T rex”. Escreva números por extenso quando melhorar a pronúncia.
+- Para fatos científicos, históricos, religiosos ou atuais, verifique afirmações específicas em fontes confiáveis. Não invente dados; se necessário, cite fontes **fora** dos dois arquivos entregues.
 
-### Imagens geradas no chat
+### Planos e imagens
 
-- Gere **uma imagem real para cada cena**, com uma geração separada por cena. Não entregue só prompts, não reutilize imagens e não faça colagens, grades ou folhas de contato.
-- As imagens serão a fonte visual exclusiva do projeto. Não planeje geração local por ComfyUI ou Stable Diffusion.
-- Gere imagens verticais para Shorts, preferencialmente 9:16. Se a ferramenta só permitir outra proporção vertical, deixe margem segura para o corte para 9:16.
-- Mantenha unidade de estilo, paleta e iluminação entre as cenas, variando enquadramento e cenário conforme a narração. Use estilo adulto e cinematográfico, salvo se o tema pedir outro.
-- Descreva concretamente o assunto e quantidade, aparência, pose, partes importantes visíveis, posição no quadro, cenário, enquadramento e luz. Em cenas de anatomia complexa, use pose simples e legível, sem partes relevantes cortadas ou sobrepostas.
-- Para dinossauros, pessoas, veículos ou máquinas, detalhe positivamente a estrutura que precisa aparecer. Por exemplo, um tiranossauro rex deve ser descrito com uma cabeça e mandíbula, um par de braços curtos junto ao peito, duas pernas traseiras e uma cauda ligada à pelve. Isso melhora a chance de acerto, mas não garante anatomia perfeita.
-- Não peça texto, legendas, placas legíveis, logotipos, marcas ou marcas-d'água dentro das imagens.
-- Confira cada imagem quanto à correspondência com a cena, composição vertical e defeitos evidentes. Se houver defeito claro, tente gerar novamente aquela cena.
-- Salve um PNG ou JPG para cada cena com um nome simples e único. Use o mesmo nome em `image_path`; exemplo: `cena_01_gancho.png`.
-- Se a geração de imagens não estiver disponível, diga isso claramente. Não simule arquivos nem entregue um modelo apontando para imagens locais.
+- Cada cena tem **2 planos visuais como padrão**; use 3 ou 4 somente quando houver revelação, comparação ou detalhe relevante. Mantenha **2 a 4 planos por cena** e, como meta prática, até 24 imagens no Short inteiro. Um plano pode durar mais quando a imagem sustentar a fala. Não troque imagem apenas para preencher uma contagem.
+- Cada plano corresponde a uma imagem **real e distinta**, gerada separadamente. Não entregue somente prompts, não reutilize imagens e não faça colagens, grades ou folhas de contato. Não planeje ComfyUI ou Stable Diffusion no fluxo padrão.
+- O primeiro plano de cada cena começa no início da fala e **não tem** `start_phrase`. Cada plano seguinte tem `start_phrase`: uma sequência curta e exata de palavras presente **uma única vez** na `narration` da própria cena. Copie o trecho literalmente do texto falado. O plano começa quando a primeira palavra dessa sequência é falada. A sequência deve estar dentro de uma frase, não atravessar duas. Não use segundos estimados.
+- Escolha as frases âncora para que a imagem apareça junto da ideia narrada; evite um plano que antecipe a revelação antes da fala. Preserve a ordem dos planos e das frases âncora. Prefira âncoras de 3 a 7 palavras que não se repitam.
+- `image_path` no nível da cena continua obrigatório para compatibilidade e deve ser **idêntico** ao `image_path` de `shots[0]`. Em cenas novas, inclua `shots` com 2 a 4 elementos. `motion` no nível da cena continua no JSON; cada plano pode omitir `motion` para herdar o da cena ou escolher um movimento permitido.
+- Gere imagens verticais, preferencialmente 9:16, com margem segura para um eventual corte. Mantenha unidade de estilo, paleta e iluminação, variando enquadramento e escala conforme a fala. Use estilo adulto e cinematográfico, salvo se o assunto pedir outro.
+- Descreva concretamente assunto, quantidade, aparência, pose, partes importantes visíveis, posição no quadro, cenário, enquadramento e luz. Para anatomia complexa, use pose simples e legível, sem sobreposição de partes relevantes. Por exemplo, um tiranossauro rex deve ter uma cabeça e mandíbula, um par de braços curtos junto ao peito, duas pernas traseiras e cauda ligada à pelve.
+- Não peça texto, legendas, placas legíveis, logotipos ou marcas-d'água nas imagens. Confira cada imagem quanto ao assunto, composição vertical e defeitos evidentes; regenere apenas a imagem problemática.
+- Salve PNG, JPG, JPEG ou WebP com nomes simples e únicos, sem diretórios. Use exatamente os mesmos nomes em cada `shots[].image_path` e no ZIP. Exemplo: `cena_01_plano_01.png`, `cena_01_plano_02.png`.
+- Se a geração de imagens não estiver disponível, diga isso claramente. Não simule arquivos nem entregue JSON que aponta para imagens inexistentes.
 
 ### Metadados preparados para publicação futura
 
-Preencha o bloco opcional `youtube` do JSON. Esses dados apenas acompanham o modelo; **nenhum upload ou publicação será executado pelo aplicativo nesta versão**.
+Preencha o bloco opcional `youtube` no JSON. Ele apenas acompanha o projeto: o aplicativo ainda não usa OAuth, agenda ou API de publicação. Escreva roteiro, narração e metadados de publicação em português brasileiro; `visual_style` é a exceção técnica e fica em inglês, como no modelo atual.
 
-- O campo raiz `title` é o título principal do Short em pt-BR.
-- `youtube.description`: descrição específica do episódio em pt-BR, com hashtags pertinentes e sem lista excessiva.
-- `youtube.tags`: termos de busca concisos e relevantes, sem `#` e sem duplicatas.
-- `youtube.category_id`: ID válido da categoria; use `27` (Education) para episódios educativos, salvo se outra categoria se encaixar melhor.
-- `youtube.default_language`: sempre `pt-BR`.
-- `youtube.status.privacy_status`: sempre `private` como padrão de revisão.
-- `youtube.status.license`: `youtube`; `embeddable` e `public_stats_viewable`: `true`.
-- `youtube.status.self_declared_made_for_kids`: booleano. Use `true` somente para conteúdo especificamente direcionado a crianças; dinossauros por si só não determinam essa opção. Para documentário geral, use `false`.
-- `youtube.status.contains_synthetic_media`: marque `true` quando houver cenas fotorrealistas geradas por IA que pareçam retratar uma situação real que não aconteceu. Ilustrações claramente não realistas não precisam ser marcadas apenas por terem sido geradas por IA.
-- `youtube.notify_subscribers`: `true`.
-- `youtube.captions`: indique preparo de legenda em pt-BR no formato VTT. Não invente timestamps no JSON; a temporização depende do áudio final e ficará para implementação posterior.
-- Não inclua data, hora, fuso, `publishAt`, credenciais, tokens, ID privado do canal ou caminhos temporários. O agendamento será configurado na aplicação quando a integração existir.
-- O bloco `youtube` não aciona API nesta versão. Não afirme que o Short foi enviado, agendado ou publicado.
+- `title`: título principal curto e específico em pt-BR.
+- `youtube.description`: descrição específica, com hashtags pertinentes e sem lista excessiva. `youtube.tags`: termos concisos sem `#` e sem duplicatas.
+- `youtube.category_id`: `27` para episódios educativos, salvo se outra categoria servir melhor. `youtube.default_language`: `pt-BR`.
+- `youtube.status.privacy_status`: `private` para revisão. `license`: `youtube`. `embeddable` e `public_stats_viewable`: `true`.
+- `self_declared_made_for_kids`: `true` somente para conteúdo especificamente direcionado a crianças. Dinossauros, por si sós, não determinam a opção.
+- `contains_synthetic_media`: avalie se cenas fotorrealistas geradas por IA parecem retratar uma situação real que não aconteceu. Ilustrações claramente não realistas não exigem `true` apenas por terem sido geradas por IA.
+- `notify_subscribers`: `true`. `youtube.captions`: preparo futuro em `pt-BR`, formato `vtt`. Não invente timestamps ou um VTT nesta etapa.
+- Não inclua agendamento, `publishAt`, credenciais, tokens ou identificadores privados. Não afirme que o Short foi publicado.
 
 ### Legendas e arquivos
 
-- `captions.enabled` atual controla apenas legendas incorporadas visualmente no MP4 e deve continuar `false` por padrão. Mantenha `captions.theme` como `modern_blue`.
-- As futuras legendas VTT do YouTube são independentes das legendas visuais. Nesta versão, não gere nem envie arquivo VTT separado; o JSON apenas registra o idioma/formato desejado para uma implementação futura.
-- Entregue exatamente dois arquivos separados:
-  1. `modelo_projeto.json`: roteiro e metadados preparados.
-  2. `imagens_cenas.zip`: uma imagem para cada cena, preferencialmente na raiz do ZIP, sem subpastas.
-- Os nomes devem coincidir exatamente entre `image_path` e arquivos do ZIP. Não inclua imagens extras sem uso.
+- `captions.enabled`: `false` no JSON por padrão; o usuário pode ativar legendas visuais na interface. `captions.theme`: `modern_blue`.
+- Entregue exatamente dois arquivos: `modelo_projeto.json` (roteiro e metadados) e `imagens_cenas.zip` (todas as imagens usadas, preferencialmente na raiz). Não inclua imagens extras no ZIP.
+- As legendas VTT futuras do YouTube são independentes das legendas incorporadas no MP4. Não gere arquivo VTT separado.
 
-### Formato do modelo JSON
+### Formato do JSON
 
-O contrato de renderização atual deve ser preservado. O único bloco novo é `youtube`, opcional, com os subcampos definidos abaixo. Não altere `narration` de string para objeto e não acrescente tradução em outro idioma.
+Use os campos e tipos abaixo. O exemplo mostra somente uma cena para explicar o formato; a entrega real deve conter 6 a 8 cenas e o total de palavras solicitado. `start_phrase` é texto copiado literalmente de `narration`, sem aspas adicionais. A primeira imagem da cena aparece em `image_path` e novamente em `shots[0].image_path` por compatibilidade.
 
 ```json
 {
-  "title": "Título curto em português do Short",
+  "title": "Título curto do Short",
   "profile": "short_vertical",
   "voice": "pf_dora",
   "speech_speed": 1.0,
   "visual_style": "cinematic digital illustration, mature visual tone, cohesive color palette, dramatic natural lighting",
-  "captions": {
-    "enabled": false,
-    "theme": "modern_blue"
-  },
+  "captions": { "enabled": false, "theme": "modern_blue" },
   "scenes": [
     {
       "id": "cena_01_gancho",
-      "narration": "Fala exata desta cena em português brasileiro.",
-      "image_path": "cena_01_gancho.png",
-      "motion": "slow_push_in"
+      "narration": "Os braços do tiranossauro rex parecem inúteis. Mas os fósseis contam uma história mais interessante.",
+      "image_path": "cena_01_plano_01.png",
+      "motion": "slow_push_in",
+      "shots": [
+        { "image_path": "cena_01_plano_01.png" },
+        { "image_path": "cena_01_plano_02.png", "start_phrase": "Mas os fósseis contam" }
+      ]
     }
   ],
   "youtube": {
@@ -95,42 +85,29 @@ O contrato de renderização atual deve ser preservado. O único bloco novo é `
       "embeddable": true,
       "public_stats_viewable": true,
       "self_declared_made_for_kids": false,
-      "contains_synthetic_media": true
+      "contains_synthetic_media": false
     },
     "notify_subscribers": true,
-    "captions": {
-      "enabled": true,
-      "language": "pt-BR",
-      "format": "vtt"
-    }
+    "captions": { "enabled": true, "language": "pt-BR", "format": "vtt" }
   }
 }
 ```
 
-Regras do JSON:
+Regras adicionais:
 
-- Preserve todos os campos atuais: `title`, `profile`, `voice`, `speech_speed`, `visual_style`, `captions.enabled`, `captions.theme` e `scenes`, sem mudar nomes ou tipos.
-- `title`: título curto e atraente em pt-BR, sem mudar o tema.
-- `profile`: sempre `short_vertical`.
-- `voice`: use `pf_dora` como padrão. As opções pt-BR conhecidas são `pf_dora` (Dora, feminina), `pm_alex` (Alex, masculina) e `pm_santa` (Santa, masculina); a seleção ocorre na interface.
-- `speech_speed`: sempre `1.0`.
-- `visual_style`: instrução curta em inglês para manter unidade visual; não descreva as cenas nesse campo.
-- `captions.enabled`: sempre `false`; o usuário pode ativá-las na interface. `captions.theme`: sempre `modern_blue`.
-- `scenes`: 6 a 8 cenas em ordem. Cada cena terá somente `id`, `narration`, `image_path` e `motion`.
-- `id`: único, curto, sem espaços e contendo somente letras sem acento, números, hífen ou sublinhado.
-- `narration`: texto não vazio em português brasileiro, até 1200 caracteres por cena; soma de 125 a 145 palavras.
-- `image_path`: obrigatório; somente o nome do arquivo PNG/JPG/JPEG/WebP, sem diretório ou caminho absoluto. Deve existir uma vez no ZIP e representar a cena.
-- `motion`: escolha somente `slow_push_in`, `slow_pull_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static` ou `auto`.
-- `youtube` é opcional em relação ao contrato antigo; quando incluído, use exatamente os campos e tipos do exemplo. Não acrescente chaves aleatórias.
-- Não inclua `image_prompt`, descrição da cena, `seed`, `negative_prompt`, `lora`, `controlnet`, `music_path`, data/hora de publicação, credenciais ou campos fora do contrato acima.
-- O JSON deve ser válido, sem comentários, vírgula sobrando, bloco Markdown ou texto adicional.
+- Preserve os nomes e tipos de `title`, `profile`, `voice`, `speech_speed`, `visual_style`, `captions`, `scenes`, `id`, `narration`, `image_path`, `motion` e do bloco `youtube` já aceitos. A única extensão de renderização nesta etapa é `scenes[].shots`. Os JSON antigos, sem `shots`, devem continuar válidos após a implementação. `visual_style` descreve apenas a unidade visual em inglês; não inclua descrições de planos nesse campo.
+- `id` é único e contém apenas letras sem acento, números, hífen ou sublinhado. `narration` tem até 1200 caracteres por cena. `image_path` é somente basename de uma imagem suportada. `motion` pertence a `slow_push_in`, `slow_pull_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static` ou `auto`.
+- Não inclua `image_prompt`, descrição visual, `seed`, `negative_prompt`, `lora`, `controlnet`, `music_path`, duração ou timestamp por plano, campos de efeito sonoro ou chaves fora do contrato.
+- O arquivo JSON deve ser válido, sem comentários, vírgulas sobrando, bloco Markdown ou texto adicional.
 
 ### Validação e entrega
 
-Antes de entregar, valide sintaxe e tipos; confirme que campos antigos mantêm os mesmos nomes/tipos; confira IDs, movimentos, contagem de palavras e correspondência exata entre `image_path` e ZIP. Confirme que o bloco opcional `youtube` não contém agenda, credenciais ou dados de outro idioma. Entregue links para `modelo_projeto.json` e `imagens_cenas.zip`; mostre prévias das imagens ou links individuais. Informe título e duração estimada em uma linha, sem duplicar a narração.
+Antes de entregar, valide o JSON e conte as palavras faladas. Confirme que cada cena tem 2 a 4 planos, que `shots[0].image_path == scene.image_path`, que cada `start_phrase` ocorre exatamente uma vez na fala da cena e que as âncoras estão em ordem. Confira correspondência exata, sem duplicatas, entre todos os arquivos referenciados nos planos e as imagens do ZIP; a referência duplicada entre `scene.image_path` e `shots[0].image_path` aponta para **um único arquivo**. Confira também o bloco `youtube` e a ausência de dados de agendamento ou credenciais.
 
----
+Entregue links para `modelo_projeto.json` e `imagens_cenas.zip`, com prévias ou links individuais das imagens. Informe título e duração estimada em uma linha, sem duplicar a narração. Avise que o modelo com `shots` exige a implementação do guia mencionado no início.
 
 ## Entrada do usuário
 
-**Título ou tema:** `[escreva aqui somente o título ou tema do Short]`
+Título ou tema:
+
+[escreva aqui somente o título ou tema do Short]
