@@ -10,7 +10,7 @@ import wave
 from unittest.mock import patch
 
 from app.captions import CaptionCue, CaptionWord
-from app.renderer import render_video
+from app.renderer import RenderScene, RenderShot, render_video
 
 
 def write_ppm(path: Path, color: tuple[int, int, int]) -> None:
@@ -73,6 +73,19 @@ class RendererSmokeTests(unittest.TestCase):
         video = next(stream for stream in streams if stream["codec_type"] == "video")
         self.assertEqual((video["width"], video["height"]), (270, 480))
         self.assertTrue(any(stream["codec_type"] == "audio" for stream in streams))
+
+    def frame_rgb(self, output: Path, timestamp: float) -> tuple[float, float, float]:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", str(timestamp),
+                "-i", str(output), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
+            ],
+            capture_output=True,
+            check=True,
+        )
+        pixels = result.stdout
+        channels = [pixels[index::3] for index in range(3)]
+        return tuple(sum(channel) / len(channel) for channel in channels)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -155,6 +168,42 @@ class RendererSmokeTests(unittest.TestCase):
         self.assertGreater(output.stat().st_size, 1000)
         self.assert_mp4_has_vertical_video_and_audio(output)
         self.assertTrue(any("imagem estática" in message for message, _ in progress_updates))
+
+    def test_two_shots_cut_inside_scene_without_internal_crossfade(self):
+        output = self.root / "two_shots.mp4"
+        render_video(
+            [self.images[0]],
+            [1.0],
+            [],
+            output,
+            profile=self.profile,
+            narration_path=self.audio,
+            motions=["static"],
+            scene_timelines=[
+                RenderScene(
+                    (
+                        RenderShot(self.images[0], 0.5, "static"),
+                        RenderShot(self.images[1], 0.5, "static"),
+                    )
+                )
+            ],
+            captions_enabled=False,
+            encoder_mode="libx264",
+            image_effects_enabled=False,
+        )
+
+        before = self.frame_rgb(output, 0.42)
+        after = self.frame_rgb(output, 0.58)
+        self.assertGreater(before[2], before[0] * 1.5)
+        self.assertGreater(after[0], after[2] * 1.5)
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(output)],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        duration = float(json.loads(probe.stdout)["format"]["duration"])
+        self.assertAlmostEqual(duration, 1.2, delta=1 / self.profile["fps"] + 0.03)
 
 
     def test_music_volume_is_applied_and_clamped_in_final_mix(self):

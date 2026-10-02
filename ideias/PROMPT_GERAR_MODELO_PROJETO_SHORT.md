@@ -2,7 +2,7 @@
 
 Copie as instruções abaixo para um chat com geração de imagens. No fim, informe somente o título ou tema do Short. O chat deverá entregar `modelo_projeto.json` e `imagens_cenas.zip` para o Local Short Studio.
 
-> **Contrato futuro:** este prompt usa `scenes[].shots`. O código atual em `main` rejeita esse campo e ainda renderiza uma imagem por cena. Implemente e valide [o guia de desenvolvimento](../docs/IMPLEMENTAR_PLANOS_E_NARRACAO_NATURAL.md) antes de importar o JSON novo. Até lá, use o prompt antigo do histórico do Git para gerar projetos compatíveis; não afirme que o novo formato já funciona.
+> **Contrato ativo:** este prompt usa `scenes[].shots`, aceito pelo Local Short Studio para sincronizar de 2 a 4 planos por cena com a narração contínua.
 
 ## Instruções para o chat
 
@@ -104,7 +104,7 @@ Regras adicionais:
 
 Antes de entregar, valide o JSON e conte as palavras faladas. Confirme que cada cena tem 2 a 4 planos, que `shots[0].image_path == scene.image_path`, que cada `start_phrase` ocorre exatamente uma vez na fala da cena e que as âncoras estão em ordem. Confira correspondência exata, sem duplicatas, entre todos os arquivos referenciados nos planos e as imagens do ZIP; a referência duplicada entre `scene.image_path` e `shots[0].image_path` aponta para **um único arquivo**. Confira também o bloco `youtube` e a ausência de dados de agendamento ou credenciais.
 
-Entregue links para `modelo_projeto.json` e `imagens_cenas.zip`, com prévias ou links individuais das imagens. Informe título e duração estimada em uma linha, sem duplicar a narração. Avise que o modelo com `shots` exige a implementação do guia mencionado no início.
+Entregue links para `modelo_projeto.json` e `imagens_cenas.zip`, com prévias ou links individuais das imagens. Informe título e duração estimada em uma linha, sem duplicar a narração.
 
 ## Entrada do usuário
 

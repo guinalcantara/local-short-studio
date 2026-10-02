@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import shutil
@@ -15,6 +16,40 @@ MOTIONS = ["slow_push_in", "slow_pull_out", "pan_left", "pan_right", "pan_up", "
 
 class RenderError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class RenderShot:
+    image_path: str | Path
+    duration: float
+    motion: str = "auto"
+
+
+@dataclass(frozen=True)
+class RenderScene:
+    shots: tuple[RenderShot, ...]
+
+
+def _round_shot_durations(shots: tuple[RenderShot, ...], scene_duration: float, fps: int) -> tuple[RenderShot, ...]:
+    if not shots:
+        raise ValueError("Cada cena precisa ter pelo menos um plano visual.")
+    raw_total = sum(max(0.0, float(shot.duration)) for shot in shots)
+    if raw_total <= 0:
+        raise ValueError("As duracoes dos planos precisam ser positivas.")
+    total_frames = max(2, round(scene_duration * fps))
+    boundaries = [0]
+    elapsed = 0.0
+    for shot in shots[:-1]:
+        elapsed += max(0.0, float(shot.duration))
+        boundaries.append(round(total_frames * elapsed / raw_total))
+    boundaries.append(total_frames)
+    frame_counts = [right - left for left, right in zip(boundaries, boundaries[1:])]
+    if any(frames < 2 for frames in frame_counts):
+        raise ValueError("Um plano visual ficou menor que dois frames apos o arredondamento.")
+    return tuple(
+        RenderShot(shot.image_path, frames / fps, shot.motion)
+        for shot, frames in zip(shots, frame_counts)
+    )
 
 
 def load_profiles(path: str | Path | None = None) -> dict[str, dict[str, Any]]:
@@ -100,8 +135,9 @@ def render_video(
     *,
     profile: dict[str, Any],
     narration_path: str | Path,
-    motions: list[str] | None = None,
     captions_enabled: bool,
+    motions: list[str] | None = None,
+    scene_timelines: list[RenderScene] | None = None,
     music_path: str | Path | None = None,
     music_volume: float = 0.12,
     caption_font: str = "Inter",
@@ -114,8 +150,8 @@ def render_video(
         raise ValueError("Adicione pelo menos uma imagem para montar o vídeo.")
     if len(image_paths) != len(scene_audio_durations):
         raise ValueError("A lista de imagens e a lista de durações precisam ter o mesmo tamanho.")
-    if any(not Path(path).exists() for path in image_paths):
-        raise FileNotFoundError("Uma ou mais imagens da timeline não foram encontradas.")
+    if scene_timelines is not None and len(scene_timelines) != len(scene_audio_durations):
+        raise ValueError("A timeline visual precisa corresponder às durações das cenas.")
     narration = Path(narration_path)
     if not narration.exists():
         raise FileNotFoundError(f"Narração não encontrada: {narration}")
@@ -151,48 +187,92 @@ def render_video(
     selected_motions = motions or ["auto"] * len(image_paths)
     if len(selected_motions) != len(image_paths):
         raise ValueError("A lista de movimentos precisa corresponder às imagens.")
-    for index, (image_path, motion, duration) in enumerate(zip(image_paths, selected_motions, clip_durations)):
-        source = Path(image_path)
-        motion_name = resolve_motion(motion, index)
+    if scene_timelines is None:
+        scene_timelines = [
+            RenderScene((RenderShot(path, duration, motion),))
+            for path, duration, motion in zip(image_paths, scene_durations, selected_motions)
+        ]
+    rounded_timelines = [
+        RenderScene(_round_shot_durations(scene.shots, duration, fps))
+        for scene, duration in zip(scene_timelines, scene_durations)
+    ]
+    timeline_paths = [shot.image_path for scene in rounded_timelines for shot in scene.shots]
+    if any(not Path(path).exists() for path in timeline_paths):
+        raise FileNotFoundError("Uma ou mais imagens da timeline não foram encontradas.")
+
+    visual_index = 0
+    for scene_index, (scene, scene_clip_duration) in enumerate(zip(rounded_timelines, clip_durations)):
+        rendered_shots: list[Path] = []
         if progress:
-            effect_label = motion_name if image_effects_enabled else "imagem estática"
-            progress(f"Renderizando cena {index + 1}/{len(image_paths)} ({effect_label})...", 0.86 + 0.09 * (index / len(image_paths)))
-        frames = max(2, round(duration * fps))
-        clip = work / f"scene_{index:02d}.mp4"
-        if image_effects_enabled:
-            zoom, x_expr, y_expr = _motion_expressions(
-                motion_name,
-                frames,
-                zoom_amount=motion_zoom_amount,
-                pan_amount=motion_pan_amount,
-                easing=motion_easing,
+            scene_effect = f"{len(scene.shots)} plano(s)" if image_effects_enabled else "imagem estática"
+            progress(
+                f"Renderizando cena {scene_index + 1}/{len(rounded_timelines)} "
+                f"({scene_effect})...",
+                0.86 + 0.09 * (scene_index / len(rounded_timelines)),
             )
-            overscan_w = round(motion_width * motion_overscan)
-            overscan_h = round(motion_height * motion_overscan)
-            vf = (
-                f"scale={overscan_w}:{overscan_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                f"crop={overscan_w}:{overscan_h},"
-                f"zoompan=z='{zoom}':x='{x_expr}':y='{y_expr}':d=1:s={motion_width}x{motion_height}:fps={fps},"
-                f"scale={width}:{height}:flags=lanczos,"
-                f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
-            )
+        for shot_index, shot in enumerate(scene.shots):
+            source = Path(shot.image_path)
+            motion_name = resolve_motion(shot.motion, visual_index)
+            duration = shot.duration
+            if shot_index == len(scene.shots) - 1:
+                duration += scene_clip_duration - scene_durations[scene_index]
+            frames = max(2, round(duration * fps))
+            shot_clip = work / f"scene_{scene_index:02d}_shot_{shot_index:02d}.mp4"
+            if image_effects_enabled:
+                zoom, x_expr, y_expr = _motion_expressions(
+                    motion_name,
+                    frames,
+                    zoom_amount=motion_zoom_amount,
+                    pan_amount=motion_pan_amount,
+                    easing=motion_easing,
+                )
+                overscan_w = round(motion_width * motion_overscan)
+                overscan_h = round(motion_height * motion_overscan)
+                vf = (
+                    f"scale={overscan_w}:{overscan_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={overscan_w}:{overscan_h},"
+                    f"zoompan=z='{zoom}':x='{x_expr}':y='{y_expr}':d=1:s={motion_width}x{motion_height}:fps={fps},"
+                    f"scale={width}:{height}:flags=lanczos,"
+                    f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
+                )
+            else:
+                vf = (
+                    f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={width}:{height},fps={fps},"
+                    f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
+                )
+            _run([
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-loop", "1", "-framerate", str(fps), "-t", f"{duration:.4f}", "-i", str(source),
+                "-vf", vf, "-an", "-t", f"{duration:.4f}", *_encoder_args(use_encoder, crf, preset),
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(shot_clip),
+            ])
+            rendered_shots.append(shot_clip)
+            visual_index += 1
+
+        if len(rendered_shots) == 1:
+            scene_clip = rendered_shots[0]
         else:
-            # Keep the source frame static and skip the expensive 2x
-            # overscan/zoompan path. The final xfade transitions are unchanged.
-            vf = (
-                f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
-                f"crop={width}:{height},fps={fps},"
-                f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
+            scene_clip = work / f"scene_{scene_index:02d}.mp4"
+            concat_inputs = [argument for path in rendered_shots for argument in ("-i", str(path))]
+            concat_sources = "".join(
+                f"[{index}:v]settb=AVTB,setpts=PTS-STARTPTS[v{index}];"
+                for index in range(len(rendered_shots))
             )
-        _run([
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-loop", "1", "-framerate", str(fps), "-t", f"{duration:.4f}", "-i", str(source),
-            "-vf", vf, "-an", "-t", f"{duration:.4f}", *_encoder_args(use_encoder, crf, preset),
-            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(clip),
-        ])
-        clip_paths.append(clip)
+            concat_labels = "".join(f"[v{index}]" for index in range(len(rendered_shots)))
+            concat_graph = f"{concat_sources}{concat_labels}concat=n={len(rendered_shots)}:v=1:a=0[vout]"
+            _run([
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *concat_inputs,
+                "-filter_complex", concat_graph, "-map", "[vout]",
+                *_encoder_args(use_encoder, crf, preset), "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                str(scene_clip),
+            ])
+        clip_paths.append(scene_clip)
         if progress:
-            progress(f"Cena {index + 1}/{len(image_paths)} renderizada.", 0.86 + 0.09 * ((index + 1) / len(image_paths)))
+            progress(
+                f"Cena {scene_index + 1}/{len(rounded_timelines)} renderizada.",
+                0.86 + 0.09 * ((scene_index + 1) / len(rounded_timelines)),
+            )
 
     inputs: list[str] = []
     for clip in clip_paths:

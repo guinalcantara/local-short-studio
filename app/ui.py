@@ -8,7 +8,7 @@ import streamlit as st
 import torch
 
 from app.image_archive import ImageZipError, ImageZipValidation, validate_image_zip
-from app.pipeline import ShortPipeline
+from app.pipeline import ShortPipeline, project_image_paths
 from app.schemas import VideoProject, example_project
 from app.voices import KOKORO_VOICES, TTS_ENGINES, normalize_voice, tts_engine_label, voice_label
 
@@ -57,7 +57,7 @@ with st.expander("Revisar roteiro e metadados", expanded=False):
         "JSON do projeto",
         value=project_text,
         height=430,
-        help="Cada cena precisa de narration e image_path. image_path deve ser o nome do arquivo presente no ZIP.",
+        help="Cada cena precisa de narration e image_path. O campo opcional shots aceita de 2 a 4 planos com imagens do ZIP.",
     )
 
 parsed: VideoProject | None = None
@@ -66,6 +66,10 @@ try:
         parsed = VideoProject.from_json_text(project_text)
 except Exception as exc:
     st.error(f"Projeto inválido: {exc}")
+
+if parsed is not None:
+    parsed_plan_count = len(project_image_paths(parsed))
+    st.caption(f"Projeto válido: {len(parsed.scenes)} cenas e {parsed_plan_count} planos visuais.")
 
 images_upload = st.file_uploader(
     "2. Importe as imagens das cenas (.zip)",
@@ -148,9 +152,18 @@ if images_upload is None:
     st.info("Envie o ZIP de imagens para validar o mapeamento das cenas.")
 elif parsed is not None:
     try:
-        zip_validation = validate_image_zip(images_upload.getvalue(), [scene.image_path for scene in parsed.scenes])
-        st.success(f"ZIP válido: {zip_validation.image_count} imagens encontradas para {len(parsed.scenes)} cenas.")
+        required_images = project_image_paths(parsed)
+        zip_validation = validate_image_zip(images_upload.getvalue(), required_images)
+        st.success(
+            f"ZIP válido: {zip_validation.image_count} imagens encontradas para "
+            f"{len(parsed.scenes)} cenas e {len(required_images)} planos."
+        )
         st.caption("Arquivos encontrados: " + ", ".join(zip_validation.found_names))
+        if any(scene.shots is not None for scene in parsed.scenes):
+            st.info(
+                "Este projeto usa múltiplos planos. O Whisper será executado para alinhar as trocas de imagem, "
+                "mesmo se as legendas visuais estiverem desativadas."
+            )
         for warning in zip_validation.warnings:
             st.warning(warning)
     except ImageZipError as exc:
@@ -216,4 +229,4 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
         st.exception(exc)
 
 st.divider()
-st.markdown("**Fluxo local:** modelo JSON + ZIP → validação → Kokoro pt-BR em CUDA → FFmpeg → MP4 9:16")
+st.markdown("**Fluxo local:** modelo JSON + ZIP → validação → voz pt-BR local → alinhamento quando necessário → FFmpeg → MP4 9:16")

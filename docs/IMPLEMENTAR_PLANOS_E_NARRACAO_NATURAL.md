@@ -1,12 +1,14 @@
 # Implementar múltiplos planos por cena e narração natural
 
+**Estado:** implementado na branch `feature/planos-narracao-natural`. Este documento permanece como especificação e checklist de regressão do recurso.
+
 Cole este documento como tarefa para o agente no VS Code, na raiz de `local-short-studio`. Implemente o recurso completo, incluindo código, testes e documentação. Leia `AGENTS.md`, `README.md`, `docs/PROJECT_PLAN.md`, `docs/USER_GUIDE.md` e `docs/TROUBLESHOOTING.md` antes de editar. O prompt de produção correspondente está em `ideias/PROMPT_GERAR_MODELO_PROJETO_SHORT.md`.
 
 ## Objetivo e limite desta etapa
 
 Implementar as melhorias **1. vários planos visuais por cena** e **2. narração por bloco de pensamento**. O resultado deve aceitar projetos antigos com uma imagem por cena e projetos novos com `shots`, sem alterar os metadados `youtube`. Não incluir nesta etapa o redesenho de transições entre cenas, mixagem/ducking, efeitos sonoros, música automática ou editor de prévia. Esses itens serão tratados depois da validação desta fase.
 
-O PR que contém este documento e o prompt **não implementa o recurso**. Até concluir o código descrito abaixo, o JSON novo com `shots` será rejeitado por `extra="forbid"`.
+O contrato com `shots` está ativo. Projetos legados sem esse campo continuam aceitos.
 
 ## Comportamento esperado
 

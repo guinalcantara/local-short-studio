@@ -1,6 +1,7 @@
 from io import BytesIO
 from pathlib import Path
 import os
+import numpy as np
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,9 +11,11 @@ import zipfile
 
 from PIL import Image
 
-from app.pipeline import ShortPipeline
-from app.captions import CaptionCue
-from app.schemas import Scene, VideoProject
+from app.pipeline import ShortPipeline, _build_voice_track
+from app.captions import CaptionCue, CaptionWord
+from app.image_archive import ImageZipError
+from app.schemas import Scene, Shot, VideoProject
+from app.whisper_alignment import WhisperTranscript
 
 
 def zip_with_images() -> bytes:
@@ -26,6 +29,35 @@ def zip_with_images() -> bytes:
 
 
 class PipelineZipTests(unittest.TestCase):
+    def test_voice_track_generates_one_natural_block_per_scene(self):
+        project = VideoProject(
+            title="Bloco natural",
+            scenes=[
+                Scene(
+                    id="gancho",
+                    narration="Primeira frase. Segunda frase sem corte artificial.",
+                    image_path="gancho.png",
+                )
+            ],
+        )
+        tts = Mock()
+        tts.generate_block.return_value = np.ones(24000, dtype=np.float32)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            narration_path, cues, durations = _build_voice_track(
+                tts, project, Path(temp_dir), 0.15, lambda *_args: None
+            )
+
+        tts.generate_block.assert_called_once_with(
+            "Primeira frase. Segunda frase sem corte artificial.",
+            voice=project.voice,
+            speed=project.speech_speed,
+        )
+        tts.release.assert_called_once()
+        self.assertTrue(narration_path.name == "narration.wav")
+        self.assertEqual(len(cues), 1)
+        self.assertEqual(durations, [1.0])
+        self.assertEqual(cues[0].end, 1.0)
+
     def test_pipeline_uses_zip_images_without_comfyui(self):
         project = VideoProject(
             title="Teste ZIP",
@@ -143,7 +175,10 @@ class PipelineZipTests(unittest.TestCase):
         project.captions.enabled = True
         whisper_cues = [CaptionCue(0.2, 0.8, "Primeira fala.")]
         whisper = Mock()
-        whisper.transcribe.return_value = whisper_cues
+        whisper.transcribe_with_words.return_value = WhisperTranscript(
+            tuple(whisper_cues),
+            (CaptionWord("Primeira", 0.2, 0.5), CaptionWord("fala", 0.5, 0.8)),
+        )
         with tempfile.TemporaryDirectory() as temp_dir:
             narration = Path(temp_dir) / "narration.wav"
             with wave.open(str(narration), "wb") as handle:
@@ -164,9 +199,88 @@ class PipelineZipTests(unittest.TestCase):
                 render_video.side_effect = lambda *args, **_kwargs: Path(args[3])
                 ShortPipeline(image_effects_enabled=False).run(project, zip_with_images())
 
-            whisper.transcribe.assert_called_once()
+            whisper.transcribe_with_words.assert_called_once()
             whisper.release.assert_called_once()
             self.assertEqual(render_video.call_args.args[2], whisper_cues)
+
+    def test_pipeline_validates_copies_and_aligns_all_shot_images_without_captions(self):
+        project = VideoProject(
+            title="Teste planos",
+            scenes=[
+                Scene(
+                    id="gancho",
+                    narration="Primeira ideia. Segunda ideia aparece.",
+                    image_path="gancho.png",
+                    motion="slow_push_in",
+                    shots=[
+                        Shot(image_path="gancho.png"),
+                        Shot(image_path="contexto.png", start_phrase="Segunda ideia", motion="pan_left"),
+                    ],
+                )
+            ],
+        )
+        whisper = Mock()
+        whisper.transcribe_with_words.return_value = WhisperTranscript(
+            (CaptionCue(0.0, 1.0, project.scenes[0].narration),),
+            (
+                CaptionWord("Primeira", 0.05, 0.20),
+                CaptionWord("ideia", 0.20, 0.40),
+                CaptionWord("Segunda", 0.50, 0.70),
+                CaptionWord("ideia", 0.70, 0.85),
+                CaptionWord("aparece", 0.85, 0.98),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            narration = Path(temp_dir) / "source.wav"
+            with wave.open(str(narration), "wb") as handle:
+                handle.setnchannels(1)
+                handle.setsampwidth(2)
+                handle.setframerate(24000)
+                handle.writeframes(b"\x00\x00" * 24000)
+
+            def fake_voice_track(_tts, _project, audio_dir, _padding, _progress):
+                target = Path(audio_dir) / "narration.wav"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(narration.read_bytes())
+                return target, [CaptionCue(0.0, 1.0, project.scenes[0].narration)], [1.0]
+
+            with patch.dict(os.environ, {"OUTPUT_DIR": temp_dir}), patch(
+                "app.pipeline.torch.cuda.is_available", return_value=True
+            ), patch("app.pipeline._build_voice_track", side_effect=fake_voice_track), patch(
+                "app.pipeline.WhisperAligner", return_value=whisper
+            ), patch("app.pipeline.render_video") as render_video:
+                render_video.side_effect = lambda *args, **_kwargs: Path(args[3])
+                result = ShortPipeline().run(project, zip_with_images())
+
+            self.assertEqual(
+                {path.name for path in (result.parent / "images").iterdir()},
+                {"01_gancho_shot_01.png", "01_gancho_shot_02.png"},
+            )
+            whisper.transcribe_with_words.assert_called_once()
+            timelines = render_video.call_args.kwargs["scene_timelines"]
+            self.assertEqual(len(timelines[0].shots), 2)
+            self.assertAlmostEqual(timelines[0].shots[0].duration, 0.5)
+            self.assertAlmostEqual(timelines[0].shots[1].duration, 0.5)
+
+    def test_missing_shot_image_stops_before_voice_generation(self):
+        project = VideoProject(
+            title="Plano ausente",
+            scenes=[
+                Scene(
+                    id="gancho",
+                    narration="Primeira ideia. Depois surge o detalhe.",
+                    image_path="gancho.png",
+                    shots=[
+                        Shot(image_path="gancho.png"),
+                        Shot(image_path="ausente.png", start_phrase="Depois surge"),
+                    ],
+                )
+            ],
+        )
+        with patch("app.pipeline._build_voice_track") as voice_track:
+            with self.assertRaisesRegex(ImageZipError, "ausentes"):
+                ShortPipeline().run(project, zip_with_images())
+        voice_track.assert_not_called()
 
 
 if __name__ == "__main__":

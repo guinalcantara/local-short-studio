@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+from dataclasses import dataclass
 import difflib
 import os
 from pathlib import Path
@@ -10,6 +11,13 @@ from typing import Any, Iterable
 import torch
 
 from app.captions import CaptionCue, CaptionWord
+from app.schemas import normalized_words, phrase_word_span
+
+
+@dataclass(frozen=True)
+class WhisperTranscript:
+    cues: tuple[CaptionCue, ...]
+    observed_words: tuple[CaptionWord, ...]
 
 
 def _word_from_whisper(word: Any) -> CaptionWord | None:
@@ -43,6 +51,17 @@ def caption_cues_from_segments(segments: Iterable[Any]) -> list[CaptionCue]:
         if text and start is not None and end is not None and float(end) > float(start):
             cues.append(CaptionCue(max(0.0, float(start)), float(end), text))
     return cues
+
+
+def observed_words_from_segments(segments: Iterable[Any]) -> tuple[CaptionWord, ...]:
+    words = [
+        word
+        for segment in segments
+        for raw_word in (getattr(segment, "words", None) or ())
+        if (word := _word_from_whisper(raw_word)) is not None
+    ]
+    words.sort(key=lambda word: (word.start, word.end))
+    return tuple(words)
 
 
 def _normalize_word(word: str) -> str:
@@ -121,6 +140,67 @@ def align_caption_cues(
     return aligned
 
 
+def anchor_start_time(
+    narration: str,
+    start_phrase: str,
+    observed_words: Iterable[CaptionWord],
+    *,
+    scene_start: float,
+    scene_end: float,
+    scene_id: str,
+    shot_index: int,
+) -> float:
+    """Locate an anchor using only lexically observed Whisper words."""
+    try:
+        anchor_start, anchor_end = phrase_word_span(narration, start_phrase)
+    except ValueError as exc:
+        raise ValueError(
+            f"Cena {scene_id}, plano {shot_index + 1}, frase {start_phrase!r}: {exc}"
+        ) from exc
+
+    expected = normalized_words(narration)
+    observed = tuple(
+        word
+        for word in observed_words
+        if word.end > scene_start and word.start < scene_end
+    )
+    observed_keys = tuple(_normalize_word(word.text) for word in observed)
+    mapping: dict[int, int] = {}
+    matcher = difflib.SequenceMatcher(a=expected, b=observed_keys, autojunk=False)
+    for tag, expected_start, expected_end, observed_start, _observed_end in matcher.get_opcodes():
+        if tag != "equal":
+            continue
+        for offset in range(expected_end - expected_start):
+            mapping[expected_start + offset] = observed_start + offset
+
+    expected_indices = list(range(anchor_start, anchor_end))
+    if any(index not in mapping for index in expected_indices):
+        raise ValueError(
+            f"Cena {scene_id}, plano {shot_index + 1}, frase {start_phrase!r}: "
+            "o Whisper nao reconheceu lexicalmente toda a frase ancora; ajuste o roteiro ou a frase"
+        )
+    observed_indices = [mapping[index] for index in expected_indices]
+    expected_observed_indices = list(range(observed_indices[0], observed_indices[0] + len(observed_indices)))
+    if observed_indices != expected_observed_indices:
+        raise ValueError(
+            f"Cena {scene_id}, plano {shot_index + 1}, frase {start_phrase!r}: "
+            "as palavras reconhecidas da ancora nao formam uma sequencia temporal coerente"
+        )
+    matched = tuple(observed[index] for index in observed_indices)
+    if any(right.start <= left.start or right.end <= left.start for left, right in zip(matched, matched[1:])):
+        raise ValueError(
+            f"Cena {scene_id}, plano {shot_index + 1}, frase {start_phrase!r}: "
+            "os timestamps reconhecidos nao sao crescentes"
+        )
+    start_time = matched[0].start
+    if not scene_start <= start_time < scene_end:
+        raise ValueError(
+            f"Cena {scene_id}, plano {shot_index + 1}, frase {start_phrase!r}: "
+            "o timestamp reconhecido ficou fora dos limites da cena"
+        )
+    return start_time
+
+
 class WhisperAligner:
     """Lazy local Whisper transcription for word-accurate captions."""
 
@@ -158,6 +238,13 @@ class WhisperAligner:
         audio_path: str | Path,
         expected_cues: Iterable[CaptionCue] | None = None,
     ) -> list[CaptionCue]:
+        return list(self.transcribe_with_words(audio_path, expected_cues=expected_cues).cues)
+
+    def transcribe_with_words(
+        self,
+        audio_path: str | Path,
+        expected_cues: Iterable[CaptionCue] | None = None,
+    ) -> WhisperTranscript:
         path = Path(audio_path)
         if not path.is_file():
             raise FileNotFoundError(f"Audio para sincronizacao nao encontrado: {path}")
@@ -171,6 +258,7 @@ class WhisperAligner:
                 condition_on_previous_text=False,
             )
             segments = list(segments)
+            observed_words = observed_words_from_segments(segments)
             cues = (
                 align_caption_cues(expected_cues, segments)
                 if expected_cues is not None
@@ -180,7 +268,9 @@ class WhisperAligner:
             raise RuntimeError(f"Whisper falhou ao sincronizar as legendas: {exc}") from exc
         if not cues:
             raise RuntimeError("Whisper nao encontrou fala no audio para criar as legendas.")
-        return cues
+        if not observed_words:
+            raise RuntimeError("Whisper nao retornou timestamps de palavras para sincronizar o audio.")
+        return WhisperTranscript(tuple(cues), observed_words)
 
     def release(self) -> None:
         self.model = None
