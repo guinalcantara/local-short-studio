@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 import unittest
 
-from app.captions import CaptionCue, caption_segments
+from app.captions import CaptionCue, caption_segments, write_ass
 from app.whisper_alignment import align_caption_cues, caption_cues_from_segments
 
 
@@ -56,6 +56,31 @@ class WhisperAlignmentTests(unittest.TestCase):
         self.assertEqual([word.text for word in cues[0].words], ["O", "rex", "correu."])
         self.assertEqual(cues[0].words[1].start, 0.35)
         self.assertEqual(cues[0].words[1].end, 0.60)
+
+    def test_ass_uses_whisper_karaoke_without_scale_animation(self):
+        import tempfile
+        from pathlib import Path
+
+        cues = [
+            CaptionCue(
+                0.0,
+                1.2,
+                "Uma legenda",
+                words=(
+                    SimpleNamespace(text="Uma", start=0.0, end=0.45),
+                    SimpleNamespace(text="legenda", start=0.45, end=1.2),
+                ),
+            )
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            content = write_ass(cues, Path(temp_dir) / "captions.ass").read_text(encoding="utf-8-sig")
+        self.assertIn("{\\kf", content)
+        self.assertNotIn("\\fscx", content)
+        self.assertNotIn("\\fscy", content)
+        self.assertNotIn("\\alpha", content)
+        self.assertNotIn("\\pos(", content)
+        self.assertIn("&H00000000", content)
+        self.assertEqual(content.count("Dialogue:"), 1)
 
 
 if __name__ == "__main__":

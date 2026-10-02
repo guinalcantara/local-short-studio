@@ -8,7 +8,7 @@ import tempfile
 import unittest
 import wave
 
-from app.captions import CaptionCue
+from app.captions import CaptionCue, CaptionWord
 from app.renderer import render_video
 
 
@@ -102,7 +102,19 @@ class RendererSmokeTests(unittest.TestCase):
         render_video(
             self.images,
             [0.55, 0.55],
-            [CaptionCue(0.0, 0.5, "Teste de legenda moderna")],
+            [
+                CaptionCue(
+                    0.0,
+                    0.5,
+                    "Teste de legenda moderna",
+                    words=(
+                        CaptionWord("Teste", 0.0, 0.16),
+                        CaptionWord("de", 0.16, 0.27),
+                        CaptionWord("legenda", 0.27, 0.39),
+                        CaptionWord("moderna", 0.39, 0.5),
+                    ),
+                )
+            ],
             output,
             profile=self.profile,
             narration_path=self.audio,
@@ -120,6 +132,8 @@ class RendererSmokeTests(unittest.TestCase):
         ass_text = ass.read_text(encoding="utf-8-sig")
         self.assertIn("Style: Caption,Inter,22", ass_text)
         self.assertIn("{\\kf", ass_text)
+        self.assertNotIn("\\fscx", ass_text)
+        self.assertNotIn("\\fscy", ass_text)
 
     def test_short_renders_without_image_effects_but_keeps_transition(self):
         output = self.root / "without_image_effects.mp4"

@@ -200,7 +200,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Caption,{font_name},{font_size},&H0000D7FF,&H00FFFFFF,&H00101826,&H99101826,-1,0,0,0,100,100,0,0,3,0,0,2,90,90,{margin_vertical},1
+Style: Caption,{font_name},{font_size},&H00FFFFFF,&H0000D7FF,&H00000000,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,{margin_vertical},1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,Effect,Text
