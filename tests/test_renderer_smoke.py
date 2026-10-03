@@ -60,6 +60,7 @@ class RendererSmokeTests(unittest.TestCase):
             "transition_seconds": 0.15,
             "scene_hold_seconds": 0.2,
             "caption_font_size": 22,
+            "caption_height_percent": 45,
             "caption_margin_vertical": 34,
         }
 
@@ -147,17 +148,24 @@ class RendererSmokeTests(unittest.TestCase):
             narration_path=self.audio,
             motions=["slow_push_in", "slow_pull_out"],
             captions_enabled=True,
-            caption_font="Inter",
+            caption_font="Montserrat",
+            caption_font_size=30,
+            caption_height_percent=55,
             encoder_mode="libx264",
             assets_dir=self.root / "assets",
         )
         self.assertGreater(output.stat().st_size, 1000)
         self.assert_mp4_has_vertical_video_and_audio(output)
-        self.assertIn("Teste de legenda moderna", output.with_suffix(".srt").read_text(encoding="utf-8"))
+        srt_text = output.with_suffix(".srt").read_text(encoding="utf-8")
+        self.assertIn("Teste de legenda", srt_text)
+        self.assertIn("moderna", srt_text)
         ass = output.with_suffix(".ass")
         self.assertTrue(ass.exists())
         ass_text = ass.read_text(encoding="utf-8-sig")
-        self.assertIn("Style: Caption,Inter,22", ass_text)
+        self.assertIn("Style: Caption,Montserrat,30", ass_text)
+        self.assertIn("PlayResX: 270", ass_text)
+        self.assertIn("PlayResY: 480", ass_text)
+        self.assertIn("{\\b800\\an5\\pos(135,216)}", ass_text)
         self.assertIn("{\\kf", ass_text)
         self.assertNotIn("\\fscx", ass_text)
         self.assertNotIn("\\fscy", ass_text)

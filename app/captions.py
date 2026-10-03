@@ -5,6 +5,13 @@ from pathlib import Path
 import re
 
 
+DEFAULT_CAPTION_FONT = "Montserrat"
+DEFAULT_CAPTION_FONT_WEIGHT = 800
+DEFAULT_CAPTION_FONT_SIZE = 72
+DEFAULT_CAPTION_HEIGHT_PERCENT = 45
+CAPTION_MAX_WORDS = 3
+
+
 @dataclass
 class CaptionWord:
     text: str
@@ -87,7 +94,7 @@ def caption_segments(
     cues: list[CaptionCue],
     *,
     max_chars_per_line: int = 24,
-    max_words: int = 5,
+    max_words: int = CAPTION_MAX_WORDS,
 ) -> list[CaptionSegment]:
     """Split sentence cues into short, time-estimated karaoke caption groups."""
     segments: list[CaptionSegment] = []
@@ -189,23 +196,37 @@ def write_ass(
     cues: list[CaptionCue],
     path: str | Path,
     *,
-    font_name: str = "Inter",
-    font_size: int = 52,
+    font_name: str = DEFAULT_CAPTION_FONT,
+    font_size: int = DEFAULT_CAPTION_FONT_SIZE,
+    font_weight: int = DEFAULT_CAPTION_FONT_WEIGHT,
     margin_vertical: int = 250,
+    vertical_position_percent: float | None = None,
+    play_res_x: int = 1080,
+    play_res_y: int = 1920,
 ) -> Path:
-    """Write readable two-line ASS captions with word-by-word color progress."""
+    """Write bold short-form ASS captions with word-by-word color progress."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    positioned = vertical_position_percent is not None
+    position_y = round(
+        play_res_y * (1 - min(100.0, max(0.0, float(vertical_position_percent or 0))) / 100)
+    )
+    alignment = 5 if positioned else 2
+    style_margin = 0 if positioned else margin_vertical
+    event_overrides = f"\\b{max(100, min(900, int(font_weight)))}"
+    if positioned:
+        event_overrides += f"\\an5\\pos({play_res_x // 2},{position_y})"
+    style_override = f"{{{event_overrides}}}"
     header = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
 ScaledBorderAndShadow: yes
 WrapStyle: 2
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Caption,{font_name},{font_size},&H00FFFFFF,&H0000D7FF,&H00000000,&H99000000,-1,0,0,0,100,100,0,0,1,3,1,2,90,90,{margin_vertical},1
+Style: Caption,{font_name},{font_size},&H00FFFFFF,&H0000D7FF,&H00000000,&H99000000,-1,0,0,0,100,100,0,0,1,4,1,{alignment},90,90,{style_margin},1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,Effect,Text
@@ -213,7 +234,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,Effect,Text
     events = []
     for segment in caption_segments(cues):
         events.append(
-            f"Dialogue: 0,{_ass_timestamp(segment.start)},{_ass_timestamp(segment.end)},Caption,,0,0,0,{_karaoke_text(segment)}"
+            f"Dialogue: 0,{_ass_timestamp(segment.start)},{_ass_timestamp(segment.end)},"
+            f"Caption,,0,0,0,{style_override}{_karaoke_text(segment)}"
         )
     target.write_text(header + "\n".join(events) + ("\n" if events else ""), encoding="utf-8-sig")
     return target

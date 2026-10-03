@@ -10,7 +10,11 @@ from typing import BinaryIO
 import numpy as np
 import torch
 
-from app.captions import CaptionCue, CaptionWord
+from app.captions import (
+    DEFAULT_CAPTION_FONT,
+    CaptionCue,
+    CaptionWord,
+)
 from app.image_archive import ImageZipValidation, validate_image_zip
 from app.renderer import RenderScene, RenderShot, RenderTransition, load_profiles, render_video
 from app.schemas import VideoProject
@@ -185,6 +189,8 @@ class ShortPipeline:
         chatterbox_settings: dict[str, float] | None = None,
         image_effects_enabled: bool = True,
         music_volume: float = 0.12,
+        caption_font_size: int | None = None,
+        caption_height_percent: float | None = None,
     ):
         self.progress = progress or (lambda message, fraction=None: None)
         self.profiles = load_profiles()
@@ -193,6 +199,8 @@ class ShortPipeline:
         self.tts_engine = normalize_tts_engine(tts_engine)
         self.image_effects_enabled = bool(image_effects_enabled)
         self.music_volume = min(1.0, max(0.0, float(music_volume)))
+        self.caption_font_size = caption_font_size
+        self.caption_height_percent = caption_height_percent
         if self.tts_engine == "kokoro":
             self.tts = KokoroTTS()
         else:
@@ -332,7 +340,9 @@ class ShortPipeline:
             captions_enabled=project.captions.enabled,
             music_path=music_path,
             music_volume=self.music_volume,
-            caption_font=os.getenv("CAPTION_FONT", "Inter"),
+            caption_font=os.getenv("CAPTION_FONT", DEFAULT_CAPTION_FONT),
+            caption_font_size=self.caption_font_size,
+            caption_height_percent=self.caption_height_percent,
             progress=self.progress,
         )
         self.progress("Short renderizado.", 1.0)

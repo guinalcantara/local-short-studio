@@ -7,6 +7,7 @@ import time
 import streamlit as st
 import torch
 
+from app.captions import DEFAULT_CAPTION_FONT_SIZE, DEFAULT_CAPTION_HEIGHT_PERCENT
 from app.image_archive import ImageZipError, ImageZipValidation, validate_image_zip
 from app.pipeline import ShortPipeline, project_image_paths
 from app.schemas import VideoProject, example_project
@@ -113,12 +114,35 @@ left, right = st.columns(2)
 captions_enabled = left.checkbox(
     "Adicionar legendas modernas",
     value=True,
-    help="Usa fonte Inter, no máximo duas linhas e destaque progressivo por palavra. Desmarcado: não queima texto no vídeo.",
+    help=(
+        "Usa Montserrat ExtraBold, blocos de até três palavras e destaque progressivo. "
+        "Desmarcado: não queima texto no vídeo."
+    ),
 )
 image_effects_enabled = st.checkbox(
     "Aplicar movimentos suaves nas imagens",
     value=True,
     help="Desmarque para testar a narração e as transições sem aplicar zoom ou panorâmica. As transições entre cenas continuam ativas.",
+)
+caption_size_col, caption_height_col = st.columns(2)
+caption_font_size = caption_size_col.slider(
+    "Tamanho da fonte da legenda",
+    min_value=36,
+    max_value=120,
+    value=DEFAULT_CAPTION_FONT_SIZE,
+    step=2,
+    disabled=not captions_enabled,
+    help="Tamanho da fonte no vídeo vertical de 1080 × 1920 pixels.",
+)
+caption_height_percent = caption_height_col.slider(
+    "Altura da legenda na tela",
+    min_value=15,
+    max_value=75,
+    value=DEFAULT_CAPTION_HEIGHT_PERCENT,
+    step=1,
+    format="%d%%",
+    disabled=not captions_enabled,
+    help="0% corresponde à base, 50% ao centro e valores maiores sobem a legenda.",
 )
 voice_reference_upload = None
 if tts_engine == "kokoro":
@@ -226,6 +250,8 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
                 chatterbox_settings=chatterbox_settings,
                 image_effects_enabled=image_effects_enabled,
                 music_volume=music_volume_percent / 100.0,
+                caption_font_size=caption_font_size,
+                caption_height_percent=caption_height_percent,
             ).run(
                 project,
                 images_upload.getvalue(),

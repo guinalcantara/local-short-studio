@@ -41,7 +41,7 @@ O modelo ativo preserva título, perfil, voz, velocidade, estilo visual, legenda
 
 As fronteiras visuais aceitam corte seco, dissolvência ou passagem pelo preto. Fades usam duração entre 0,15 e 0,45 segundo ou o padrão do perfil; projetos sem configuração preservam a dissolvência legada. A duração é convertida em frames e o renderer protege ao menos três frames do primeiro plano da cena de entrada depois do efeito. O áudio não recebe fade nem pausa adicional.
 
-A narração completa de cada cena é gerada em uma única chamada normal do mecanismo de voz, sem pausa fixa inserida entre frases. O padding curto continua existindo somente entre cenas. Quando há `shots`, o Whisper roda mesmo sem legendas visuais; somente correspondências lexicais realmente observadas podem determinar um corte.
+A narração completa de cada cena é gerada em uma única chamada normal do mecanismo de voz, sem pausa fixa inserida entre frases. O padding curto continua existindo somente entre cenas. Quando há `shots`, o Whisper roda mesmo sem legendas visuais; somente correspondências lexicais realmente observadas podem determinar um corte. As legendas opcionais usam Montserrat ExtraBold, até três palavras por bloco e posição/tamanho ajustáveis pela interface sem alterar o JSON.
 
 O bloco opcional `youtube` contém somente metadados validados e é preservado na exportação. Não há OAuth, upload, publicação, agendamento ou chamadas à API.
 
@@ -55,7 +55,7 @@ O bloco opcional `youtube` contém somente metadados validados e é preservado n
 2. JSON e ZIP inválidos bloqueiam a geração com mensagens úteis.
 3. Todas as imagens referenciadas pelos planos são validadas antes da voz e copiadas apenas para a pasta da execução.
 4. O mecanismo escolhido usa CUDA sequencialmente para todas as falas; Kokoro e Chatterbox não são usados ao mesmo tempo.
-5. FFmpeg gera MP4 vertical com cortes secos entre planos e transições `cut`, `crossfade` ou `fade_black` entre cenas, preservando movimentos, áudio e legendas opcionais.
+5. FFmpeg gera MP4 vertical com cortes secos entre planos e transições `cut`, `crossfade` ou `fade_black` entre cenas, preservando movimentos, áudio e legendas opcionais configuráveis.
 6. Metadados `youtube` são aceitos, validados e preservados sem publicação.
 7. Testes cobrem esquema, voz por bloco, alinhamento lexical, segurança do ZIP, transições mistas e renderização da timeline.
 

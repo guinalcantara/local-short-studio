@@ -15,7 +15,8 @@
     "motion_zoom_amount": 0.05,
     "motion_pan_amount": 0.06,
     "motion_easing": "quintic",
-    "caption_font_size": 52,
+    "caption_font_size": 72,
+    "caption_height_percent": 45,
     "caption_margin_vertical": 250
   },
   "video_landscape": {
@@ -34,7 +35,8 @@
     "motion_zoom_amount": 0.05,
     "motion_pan_amount": 0.06,
     "motion_easing": "quintic",
-    "caption_font_size": 44,
+    "caption_font_size": 64,
+    "caption_height_percent": 45,
     "caption_margin_vertical": 90
   }
 }

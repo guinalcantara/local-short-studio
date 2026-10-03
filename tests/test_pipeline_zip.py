@@ -107,7 +107,7 @@ class PipelineZipTests(unittest.TestCase):
                 "app.pipeline._build_voice_track", side_effect=fake_voice_track
             ), patch("app.pipeline.render_video") as render_video:
                 render_video.side_effect = lambda *args, **_kwargs: Path(args[3])
-                pipeline = ShortPipeline()
+                pipeline = ShortPipeline(caption_font_size=84, caption_height_percent=52)
                 self.assertFalse(hasattr(pipeline, "comfy"))
                 result = pipeline.run(project, zip_with_images())
 
@@ -116,6 +116,8 @@ class PipelineZipTests(unittest.TestCase):
             render_video.assert_called_once()
             self.assertEqual(render_video.call_args.kwargs["motions"], ["slow_push_in", "pan_left"])
             self.assertTrue(render_video.call_args.kwargs["image_effects_enabled"])
+            self.assertEqual(render_video.call_args.kwargs["caption_font_size"], 84)
+            self.assertEqual(render_video.call_args.kwargs["caption_height_percent"], 52)
             transitions = render_video.call_args.kwargs["transitions"]
             self.assertEqual([(item.type, item.duration) for item in transitions], [("crossfade", 0.35)])
 

@@ -8,7 +8,14 @@ import shutil
 import subprocess
 from typing import Any, Literal
 
-from app.captions import CaptionCue, write_ass, write_srt
+from app.captions import (
+    DEFAULT_CAPTION_FONT,
+    DEFAULT_CAPTION_FONT_SIZE,
+    DEFAULT_CAPTION_HEIGHT_PERCENT,
+    CaptionCue,
+    write_ass,
+    write_srt,
+)
 
 
 MOTIONS = ["slow_push_in", "slow_pull_out", "pan_left", "pan_right", "pan_up", "pan_down", "static"]
@@ -224,7 +231,9 @@ def render_video(
     transitions: list[RenderTransition] | None = None,
     music_path: str | Path | None = None,
     music_volume: float = 0.12,
-    caption_font: str = "Inter",
+    caption_font: str = DEFAULT_CAPTION_FONT,
+    caption_font_size: int | None = None,
+    caption_height_percent: float | None = None,
     encoder_mode: str | None = None,
     assets_dir: str | Path = "/workspace/assets",
     image_effects_enabled: bool = True,
@@ -407,12 +416,25 @@ def render_video(
     if captions_enabled:
         srt_path = write_srt(cues, out.with_suffix(".srt"))
         fonts_dir = Path(assets_dir) / "fonts"
+        resolved_caption_font_size = int(
+            caption_font_size
+            if caption_font_size is not None
+            else profile.get("caption_font_size", DEFAULT_CAPTION_FONT_SIZE)
+        )
+        resolved_caption_height = float(
+            caption_height_percent
+            if caption_height_percent is not None
+            else profile.get("caption_height_percent", DEFAULT_CAPTION_HEIGHT_PERCENT)
+        )
         ass_path = write_ass(
             cues,
             out.with_suffix(".ass"),
             font_name=caption_font,
-            font_size=int(profile.get("caption_font_size", 52)),
+            font_size=max(24, min(160, resolved_caption_font_size)),
             margin_vertical=int(profile.get("caption_margin_vertical", 250)),
+            vertical_position_percent=max(0.0, min(100.0, resolved_caption_height)),
+            play_res_x=width,
+            play_res_y=height,
         )
         graph.append(
             f"[vbase]subtitles='{_quote_filter_path(ass_path)}':fontsdir='{_quote_filter_path(fonts_dir)}'[vcap]"
