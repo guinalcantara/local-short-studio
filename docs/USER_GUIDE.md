@@ -18,6 +18,16 @@ O formato legado, sem `shots`, continua usando `image_path` e `motion` como seu 
 
 Veja os dois contratos em `examples/modelo_projeto.json` e `examples/modelo_projeto_multiplos_planos.json`.
 
+### Transição para a próxima cena
+
+Em qualquer cena que não seja a última, `transition_to_next` pode escolher:
+
+- `cut`: corte seco; não aceita `duration_seconds`;
+- `crossfade`: dissolvência entre as cenas;
+- `fade_black`: passagem breve pelo preto, indicada para uma mudança clara de tempo ou assunto.
+
+Para `crossfade` e `fade_black`, `duration_seconds` é opcional e aceita valores de 0,15 a 0,45 segundo. Sem duração, o app usa o valor do perfil; sem o bloco inteiro, mantém a dissolvência legada. Não coloque `transition_to_next` na última cena. A escolha não acrescenta silêncio nem altera `start_phrase`.
+
 O campo `image_prompt` não faz parte do esquema ativo. As imagens já vêm prontas no ZIP. O campo `seed` continua aceito por compatibilidade, mas não é usado para gerar imagens.
 
 Monte `imagens_cenas.zip` com PNG, JPG, JPEG ou WebP. Os arquivos podem estar na raiz ou todos dentro de uma única subpasta. Não use caminhos como `../cena.png` no JSON.
@@ -74,7 +84,9 @@ O campo **Áudio de referência da sua voz** é opcional. Para reproduzir a iden
 
 ## 5. Saída
 
-O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera um WAV por cena com o mecanismo escolhido em CUDA e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg. Planos da mesma cena usam cortes secos nos instantes alinhados; o crossfade existente continua somente entre cenas. Durante a montagem, a barra informa a cena atual, a quantidade de planos, as cenas concluídas e a etapa final de transições/áudio.
+O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera um WAV por cena com o mecanismo escolhido em CUDA e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg. Planos da mesma cena usam cortes secos nos instantes alinhados; entre cenas, o JSON pode escolher corte seco, dissolvência ou passagem pelo preto. Durante a montagem, a barra informa a cena atual, a quantidade de planos, as cenas concluídas e a etapa final de transições/áudio.
+
+A duração visual do fade é arredondada para frames. Se uma duração explicitamente informada ocupar quase todo o primeiro plano da cena seguinte, a geração para com uma mensagem da fronteira problemática. Em projetos legados, o app pode encurtar a dissolvência implícita ou usar corte seco para preservar o plano.
 
 O arquivo `project.json` preserva o bloco `youtube`, se existir. Esse bloco é somente preparação para uma tarefa futura; esta versão não publica nada.
 

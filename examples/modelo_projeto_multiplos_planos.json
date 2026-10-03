@@ -23,7 +23,11 @@
           "start_phrase": "Mas os fósseis contam",
           "motion": "pan_left"
         }
-      ]
+      ],
+      "transition_to_next": {
+        "type": "crossfade",
+        "duration_seconds": 0.25
+      }
     },
     {
       "id": "cena_02_funcao",

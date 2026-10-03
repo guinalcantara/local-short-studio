@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Any
+from typing import Any, Literal
 
 from app.captions import CaptionCue, write_ass, write_srt
 
@@ -28,6 +28,89 @@ class RenderShot:
 @dataclass(frozen=True)
 class RenderScene:
     shots: tuple[RenderShot, ...]
+    scene_id: str | None = None
+
+
+TransitionKind = Literal["cut", "crossfade", "fade_black"]
+
+
+@dataclass(frozen=True)
+class RenderTransition:
+    type: TransitionKind
+    duration: float = 0.0
+    duration_explicit: bool = False
+    source_scene_id: str | None = None
+    target_scene_id: str | None = None
+
+
+def resolve_transitions(
+    transitions: list[RenderTransition] | None,
+    scenes: list[RenderScene],
+    *,
+    default_duration: float,
+    fps: int,
+) -> tuple[list[RenderTransition], list[str]]:
+    boundary_count = max(0, len(scenes) - 1)
+    requested = (
+        transitions
+        if transitions is not None
+        else [RenderTransition("crossfade", default_duration) for _ in range(boundary_count)]
+    )
+    if len(requested) != boundary_count:
+        raise ValueError("A lista de transições precisa corresponder às fronteiras entre cenas.")
+
+    resolved: list[RenderTransition] = []
+    notices: list[str] = []
+    for index, transition in enumerate(requested):
+        source_id = transition.source_scene_id or scenes[index].scene_id or f"cena {index + 1}"
+        target_id = transition.target_scene_id or scenes[index + 1].scene_id or f"cena {index + 2}"
+        if transition.type == "cut":
+            if transition.duration:
+                raise ValueError(f"Fronteira {source_id} → {target_id}: corte seco deve ter duração zero.")
+            resolved.append(
+                RenderTransition("cut", 0.0, transition.duration_explicit, source_id, target_id)
+            )
+            continue
+        if transition.type not in {"crossfade", "fade_black"}:
+            raise ValueError(f"Fronteira {source_id} → {target_id}: tipo de transição inválido.")
+
+        duration = transition.duration
+        if duration <= 0:
+            raise ValueError(
+                f"Fronteira {source_id} → {target_id}: fades precisam ter duração positiva."
+            )
+        requested_frames = max(1, round(duration * fps))
+        incoming_first_shot_frames = round(scenes[index + 1].shots[0].duration * fps)
+        available_frames = max(0, incoming_first_shot_frames - 3)
+        if requested_frames > available_frames:
+            if transition.duration_explicit:
+                raise ValueError(
+                    f"Fronteira {source_id} → {target_id}: a transição de {requested_frames} frames "
+                    f"não cabe no primeiro plano de {incoming_first_shot_frames} frames; "
+                    "são necessários ao menos 3 frames visíveis depois do efeito"
+                )
+            if available_frames == 0:
+                notices.append(
+                    f"Fronteira {source_id} → {target_id}: transição implícita substituída por corte "
+                    "para preservar o primeiro plano da cena de entrada."
+                )
+                resolved.append(RenderTransition("cut", 0.0, False, source_id, target_id))
+                continue
+            notices.append(
+                f"Fronteira {source_id} → {target_id}: transição implícita encurtada de "
+                f"{requested_frames} para {available_frames} frames."
+            )
+            requested_frames = available_frames
+        resolved.append(
+            RenderTransition(
+                transition.type,
+                requested_frames / fps,
+                transition.duration_explicit,
+                source_id,
+                target_id,
+            )
+        )
+    return resolved, notices
 
 
 def _round_shot_durations(shots: tuple[RenderShot, ...], scene_duration: float, fps: int) -> tuple[RenderShot, ...]:
@@ -138,6 +221,7 @@ def render_video(
     captions_enabled: bool,
     motions: list[str] | None = None,
     scene_timelines: list[RenderScene] | None = None,
+    transitions: list[RenderTransition] | None = None,
     music_path: str | Path | None = None,
     music_volume: float = 0.12,
     caption_font: str = "Inter",
@@ -159,7 +243,7 @@ def render_video(
     width = int(profile["width"])
     height = int(profile["height"])
     fps = int(profile["fps"])
-    transition = float(profile["transition_seconds"])
+    default_transition = float(profile["transition_seconds"])
     hold = float(profile["scene_hold_seconds"])
     crf = int(profile.get("crf", 20))
     preset = str(profile.get("preset", "medium"))
@@ -178,10 +262,6 @@ def render_video(
     work.mkdir(parents=True, exist_ok=True)
 
     scene_durations = [max(float(value), 0.4) for value in scene_audio_durations]
-    clip_durations = [
-        value + (transition if index < len(scene_durations) - 1 else hold)
-        for index, value in enumerate(scene_durations)
-    ]
     clip_paths: list[Path] = []
 
     selected_motions = motions or ["auto"] * len(image_paths)
@@ -189,12 +269,28 @@ def render_video(
         raise ValueError("A lista de movimentos precisa corresponder às imagens.")
     if scene_timelines is None:
         scene_timelines = [
-            RenderScene((RenderShot(path, duration, motion),))
-            for path, duration, motion in zip(image_paths, scene_durations, selected_motions)
+            RenderScene((RenderShot(path, duration, motion),), f"cena_{index + 1}")
+            for index, (path, duration, motion) in enumerate(
+                zip(image_paths, scene_durations, selected_motions)
+            )
         ]
     rounded_timelines = [
-        RenderScene(_round_shot_durations(scene.shots, duration, fps))
+        RenderScene(_round_shot_durations(scene.shots, duration, fps), scene.scene_id)
         for scene, duration in zip(scene_timelines, scene_durations)
+    ]
+    resolved_transitions, transition_notices = resolve_transitions(
+        transitions,
+        rounded_timelines,
+        default_duration=default_transition,
+        fps=fps,
+    )
+    for notice in transition_notices:
+        if progress:
+            progress(notice, None)
+    transition_durations = [transition.duration for transition in resolved_transitions]
+    clip_durations = [
+        duration + (transition_durations[index] if index < len(transition_durations) else hold)
+        for index, duration in enumerate(scene_durations)
     ]
     timeline_paths = [shot.image_path for scene in rounded_timelines for shot in scene.shots]
     if any(not Path(path).exists() for path in timeline_paths):
@@ -290,13 +386,21 @@ def render_video(
     current_label = "v0"
     elapsed = clip_durations[0]
     for index in range(1, len(clip_paths)):
+        boundary = resolved_transitions[index - 1]
         next_label = f"vx{index}"
-        offset = max(0.0, elapsed - transition)
-        graph.append(
-            f"[{current_label}][v{index}]xfade=transition=fade:duration={transition:.4f}:offset={offset:.4f}[{next_label}]"
-        )
+        if boundary.type == "cut":
+            graph.append(
+                f"[{current_label}][v{index}]concat=n=2:v=1:a=0[{next_label}]"
+            )
+        else:
+            effect = "fade" if boundary.type == "crossfade" else "fadeblack"
+            offset = max(0.0, elapsed - boundary.duration)
+            graph.append(
+                f"[{current_label}][v{index}]xfade=transition={effect}:"
+                f"duration={boundary.duration:.4f}:offset={offset:.4f}[{next_label}]"
+            )
         current_label = next_label
-        elapsed += clip_durations[index] - transition
+        elapsed += clip_durations[index] - boundary.duration
 
     graph.append(f"[{current_label}]fps={fps},format=yuv420p[vbase]")
     video_label = "vbase"

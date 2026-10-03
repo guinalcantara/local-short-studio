@@ -12,7 +12,7 @@ import torch
 
 from app.captions import CaptionCue, CaptionWord
 from app.image_archive import ImageZipValidation, validate_image_zip
-from app.renderer import RenderScene, RenderShot, load_profiles, render_video
+from app.renderer import RenderScene, RenderShot, RenderTransition, load_profiles, render_video
 from app.schemas import VideoProject
 from app.tts import KokoroTTS, SAMPLE_RATE
 from app.tts_chatterbox import ChatterboxPTBRTTS
@@ -89,6 +89,30 @@ def project_image_paths(project: VideoProject) -> list[str]:
     return [shot.image_path for scene in project.scenes for shot in scene.visual_shots()]
 
 
+def project_transitions(project: VideoProject, default_duration: float) -> list[RenderTransition]:
+    transitions: list[RenderTransition] = []
+    for index, scene in enumerate(project.scenes[:-1]):
+        target = project.scenes[index + 1]
+        configured = scene.transition_to_next
+        if configured is None:
+            transitions.append(
+                RenderTransition("crossfade", default_duration, False, scene.id, target.id)
+            )
+        elif configured.type == "cut":
+            transitions.append(RenderTransition("cut", 0.0, False, scene.id, target.id))
+        else:
+            transitions.append(
+                RenderTransition(
+                    configured.type,
+                    configured.duration_seconds or default_duration,
+                    configured.duration_seconds is not None,
+                    scene.id,
+                    target.id,
+                )
+            )
+    return transitions
+
+
 def _build_render_timelines(
     project: VideoProject,
     copied_images: list[list[Path]],
@@ -112,7 +136,7 @@ def _build_render_timelines(
         if len(images) != len(shots):
             raise ValueError(f"Cena {scene.id}: a quantidade de imagens copiadas não corresponde aos planos.")
         if scene.shots is None:
-            timelines.append(RenderScene((RenderShot(images[0], scene_duration, scene.motion),)))
+            timelines.append(RenderScene((RenderShot(images[0], scene_duration, scene.motion),), scene.id))
             continue
 
         starts = [cue.start]
@@ -146,7 +170,8 @@ def _build_render_timelines(
                 tuple(
                     RenderShot(image, duration, shot.motion or scene.motion)
                     for image, duration, shot in zip(images, durations, shots)
-                )
+                ),
+                scene.id,
             )
         )
     return timelines
@@ -302,6 +327,7 @@ class ShortPipeline:
             narration_path=narration_path,
             motions=[scene.motion for scene in project.scenes],
             scene_timelines=scene_timelines,
+            transitions=project_transitions(project, float(profile["transition_seconds"])),
             image_effects_enabled=self.image_effects_enabled,
             captions_enabled=project.captions.enabled,
             music_path=music_path,

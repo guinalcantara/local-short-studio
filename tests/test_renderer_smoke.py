@@ -10,7 +10,7 @@ import wave
 from unittest.mock import patch
 
 from app.captions import CaptionCue, CaptionWord
-from app.renderer import RenderScene, RenderShot, render_video
+from app.renderer import RenderScene, RenderShot, RenderTransition, render_video, resolve_transitions
 
 
 def write_ppm(path: Path, color: tuple[int, int, int]) -> None:
@@ -42,9 +42,13 @@ class RendererSmokeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.images = [self.root / "one.ppm", self.root / "two.ppm"]
-        write_ppm(self.images[0], (25, 85, 190))
-        write_ppm(self.images[1], (195, 75, 60))
+        self.all_images = [self.root / f"scene_{index}.ppm" for index in range(4)]
+        for path, color in zip(
+            self.all_images,
+            ((25, 85, 190), (195, 75, 60), (35, 175, 75), (210, 180, 30)),
+        ):
+            write_ppm(path, color)
+        self.images = self.all_images[:2]
         self.audio = self.root / "voice.wav"
         write_wav(self.audio)
         self.profile = {
@@ -86,6 +90,15 @@ class RendererSmokeTests(unittest.TestCase):
         pixels = result.stdout
         channels = [pixels[index::3] for index in range(3)]
         return tuple(sum(channel) / len(channel) for channel in channels)
+
+    def video_duration(self, output: Path) -> float:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(output)],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return float(json.loads(probe.stdout)["format"]["duration"])
 
     def tearDown(self):
         self.temp.cleanup()
@@ -170,40 +183,113 @@ class RendererSmokeTests(unittest.TestCase):
         self.assertTrue(any("imagem estática" in message for message, _ in progress_updates))
 
     def test_two_shots_cut_inside_scene_without_internal_crossfade(self):
-        output = self.root / "two_shots.mp4"
+        cue = CaptionCue(0.0, 0.9, "Legenda sobre dois planos")
+        for captions_enabled in (False, True):
+            with self.subTest(captions_enabled=captions_enabled):
+                output = self.root / f"two_shots_{captions_enabled}.mp4"
+                render_video(
+                    [self.images[0]],
+                    [1.0],
+                    [cue],
+                    output,
+                    profile=self.profile,
+                    narration_path=self.audio,
+                    motions=["static"],
+                    scene_timelines=[
+                        RenderScene(
+                            (
+                                RenderShot(self.images[0], 0.5, "static"),
+                                RenderShot(self.images[1], 0.5, "static"),
+                            )
+                        )
+                    ],
+                    captions_enabled=captions_enabled,
+                    encoder_mode="libx264",
+                    image_effects_enabled=False,
+                    assets_dir=self.root / "assets",
+                )
+
+                before = self.frame_rgb(output, 0.42)
+                after = self.frame_rgb(output, 0.58)
+                self.assertGreater(before[2], before[0] * 1.5)
+                self.assertGreater(after[0], after[2] * 1.5)
+                self.assertAlmostEqual(
+                    self.video_duration(output),
+                    1.2,
+                    delta=1 / self.profile["fps"] + 0.03,
+                )
+                self.assertEqual(output.with_suffix(".srt").exists(), captions_enabled)
+
+    def test_mixed_cut_crossfade_and_fade_black_preserve_timeline(self):
+        output = self.root / "mixed_transitions.mp4"
+        transitions = [
+            RenderTransition("cut", 0.0, True, "cena_01", "cena_02"),
+            RenderTransition("crossfade", 0.15, True, "cena_02", "cena_03"),
+            RenderTransition("fade_black", 0.15, True, "cena_03", "cena_04"),
+        ]
         render_video(
-            [self.images[0]],
-            [1.0],
+            self.all_images,
+            [0.5, 0.5, 0.5, 0.5],
             [],
             output,
             profile=self.profile,
             narration_path=self.audio,
-            motions=["static"],
-            scene_timelines=[
-                RenderScene(
-                    (
-                        RenderShot(self.images[0], 0.5, "static"),
-                        RenderShot(self.images[1], 0.5, "static"),
-                    )
-                )
-            ],
+            motions=["static"] * 4,
+            transitions=transitions,
             captions_enabled=False,
             encoder_mode="libx264",
             image_effects_enabled=False,
         )
 
-        before = self.frame_rgb(output, 0.42)
-        after = self.frame_rgb(output, 0.58)
-        self.assertGreater(before[2], before[0] * 1.5)
-        self.assertGreater(after[0], after[2] * 1.5)
-        probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(output)],
-            text=True,
-            capture_output=True,
-            check=True,
+        before_cut = self.frame_rgb(output, 0.42)
+        after_cut = self.frame_rgb(output, 0.54)
+        during_crossfade = self.frame_rgb(output, 1.08)
+        during_black = self.frame_rgb(output, 1.58)
+        after_black = self.frame_rgb(output, 1.72)
+        self.assertGreater(before_cut[2], before_cut[0] * 1.5)
+        self.assertGreater(after_cut[0], after_cut[2] * 1.5)
+        self.assertGreater(during_crossfade[0], 30)
+        self.assertGreater(during_crossfade[1], 30)
+        self.assertLess(max(during_black), 45)
+        self.assertGreater(after_black[0], 100)
+        self.assertGreater(after_black[1], 90)
+        self.assert_mp4_has_vertical_video_and_audio(output)
+        self.assertAlmostEqual(
+            self.video_duration(output),
+            2.2,
+            delta=1 / self.profile["fps"] + 0.03,
         )
-        duration = float(json.loads(probe.stdout)["format"]["duration"])
-        self.assertAlmostEqual(duration, 1.2, delta=1 / self.profile["fps"] + 0.03)
+
+    def test_transition_guard_rejects_explicit_duration_and_adjusts_implicit_fade(self):
+        scenes = [
+            RenderScene((RenderShot(self.images[0], 0.5),), "saida"),
+            RenderScene((RenderShot(self.images[1], 0.25),), "entrada"),
+        ]
+        shortened, notices = resolve_transitions(
+            [RenderTransition("crossfade", 0.15, False, "saida", "entrada")],
+            scenes,
+            default_duration=0.15,
+            fps=24,
+        )
+        self.assertEqual(shortened[0].duration, 3 / 24)
+        self.assertIn("encurtada", notices[0])
+
+        replaced, notices = resolve_transitions(
+            [RenderTransition("crossfade", 0.15, False, "saida", "entrada_curta")],
+            [scenes[0], RenderScene((RenderShot(self.images[1], 0.08),), "entrada_curta")],
+            default_duration=0.15,
+            fps=24,
+        )
+        self.assertEqual(replaced[0].type, "cut")
+        self.assertIn("substituída por corte", notices[0])
+
+        with self.assertRaisesRegex(ValueError, "Fronteira saida → entrada"):
+            resolve_transitions(
+                [RenderTransition("crossfade", 0.15, True, "saida", "entrada")],
+                scenes,
+                default_duration=0.15,
+                fps=24,
+            )
 
 
     def test_music_volume_is_applied_and_clamped_in_final_mix(self):

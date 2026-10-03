@@ -11,17 +11,21 @@ import zipfile
 
 from PIL import Image
 
-from app.pipeline import ShortPipeline, _build_voice_track
+from app.pipeline import ShortPipeline, _build_voice_track, project_transitions
 from app.captions import CaptionCue, CaptionWord
 from app.image_archive import ImageZipError
-from app.schemas import Scene, Shot, VideoProject
+from app.schemas import Scene, SceneTransition, Shot, VideoProject
 from app.whisper_alignment import WhisperTranscript
 
 
 def zip_with_images() -> bytes:
     archive_bytes = BytesIO()
     with zipfile.ZipFile(archive_bytes, "w") as archive:
-        for name, color in (("gancho.png", "blue"), ("contexto.png", "red")):
+        for name, color in (
+            ("gancho.png", "blue"),
+            ("contexto.png", "red"),
+            ("fechamento.png", "green"),
+        ):
             image_bytes = BytesIO()
             Image.new("RGB", (32, 48), color).save(image_bytes, format="PNG")
             archive.writestr(name, image_bytes.getvalue())
@@ -29,6 +33,25 @@ def zip_with_images() -> bytes:
 
 
 class PipelineZipTests(unittest.TestCase):
+    def test_configured_fade_without_duration_uses_profile_default(self):
+        project = VideoProject(
+            title="Duração padrão",
+            scenes=[
+                Scene(
+                    id="gancho",
+                    narration="Primeira fala.",
+                    image_path="gancho.png",
+                    transition_to_next=SceneTransition(type="fade_black"),
+                ),
+                Scene(id="contexto", narration="Segunda fala.", image_path="contexto.png"),
+            ],
+        )
+
+        transition = project_transitions(project, 0.35)[0]
+
+        self.assertEqual((transition.type, transition.duration), ("fade_black", 0.35))
+        self.assertFalse(transition.duration_explicit)
+
     def test_voice_track_generates_one_natural_block_per_scene(self):
         project = VideoProject(
             title="Bloco natural",
@@ -93,12 +116,20 @@ class PipelineZipTests(unittest.TestCase):
             render_video.assert_called_once()
             self.assertEqual(render_video.call_args.kwargs["motions"], ["slow_push_in", "pan_left"])
             self.assertTrue(render_video.call_args.kwargs["image_effects_enabled"])
+            transitions = render_video.call_args.kwargs["transitions"]
+            self.assertEqual([(item.type, item.duration) for item in transitions], [("crossfade", 0.35)])
 
     def test_pipeline_can_disable_image_effects(self):
         project = VideoProject(
             title="Teste sem movimentos",
             scenes=[
-                Scene(id="gancho", narration="Primeira fala.", image_path="gancho.png", motion="slow_push_in"),
+                Scene(
+                    id="gancho",
+                    narration="Primeira fala.",
+                    image_path="gancho.png",
+                    motion="slow_push_in",
+                    transition_to_next=SceneTransition(type="cut"),
+                ),
                 Scene(id="contexto", narration="Segunda fala.", image_path="contexto.png", motion="pan_left"),
             ],
         )
@@ -118,18 +149,25 @@ class PipelineZipTests(unittest.TestCase):
 
             with patch.dict(os.environ, {"OUTPUT_DIR": temp_dir}), patch("app.pipeline.torch.cuda.is_available", return_value=True), patch(
                 "app.pipeline._build_voice_track", side_effect=fake_voice_track
-            ), patch("app.pipeline.render_video") as render_video:
+            ), patch("app.pipeline.WhisperAligner") as whisper_aligner, patch("app.pipeline.render_video") as render_video:
                 render_video.side_effect = lambda *args, **_kwargs: Path(args[3])
                 ShortPipeline(image_effects_enabled=False).run(project, zip_with_images())
 
             self.assertEqual(render_video.call_args.kwargs["motions"], ["slow_push_in", "pan_left"])
             self.assertFalse(render_video.call_args.kwargs["image_effects_enabled"])
+            self.assertEqual(render_video.call_args.kwargs["transitions"][0].type, "cut")
+            whisper_aligner.assert_not_called()
 
     def test_pipeline_stores_chatterbox_voice_reference_in_run(self):
         project = VideoProject(
             title="Teste voz clonada",
             scenes=[
-                Scene(id="gancho", narration="Primeira fala.", image_path="gancho.png", motion="static"),
+                Scene(
+                    id="gancho",
+                    narration="Primeira fala.",
+                    image_path="gancho.png",
+                    motion="static",
+                ),
                 Scene(id="contexto", narration="Segunda fala.", image_path="contexto.png", motion="static"),
             ],
         )
@@ -168,16 +206,36 @@ class PipelineZipTests(unittest.TestCase):
         project = VideoProject(
             title="Teste Whisper",
             scenes=[
-                Scene(id="gancho", narration="Primeira fala.", image_path="gancho.png", motion="static"),
-                Scene(id="contexto", narration="Segunda fala.", image_path="contexto.png", motion="static"),
+                Scene(
+                    id="gancho",
+                    narration="Primeira fala. Segunda ideia.",
+                    image_path="gancho.png",
+                    motion="static",
+                    shots=[
+                        Shot(image_path="gancho.png"),
+                        Shot(image_path="contexto.png", start_phrase="Segunda ideia"),
+                    ],
+                    transition_to_next=SceneTransition(type="fade_black", duration_seconds=0.2),
+                ),
+                Scene(id="fechamento", narration="Última fala.", image_path="fechamento.png", motion="static"),
             ],
         )
         project.captions.enabled = True
-        whisper_cues = [CaptionCue(0.2, 0.8, "Primeira fala.")]
+        whisper_cues = [
+            CaptionCue(0.0, 1.0, project.scenes[0].narration),
+            CaptionCue(1.0, 2.0, project.scenes[1].narration),
+        ]
         whisper = Mock()
         whisper.transcribe_with_words.return_value = WhisperTranscript(
             tuple(whisper_cues),
-            (CaptionWord("Primeira", 0.2, 0.5), CaptionWord("fala", 0.5, 0.8)),
+            (
+                CaptionWord("Primeira", 0.05, 0.20),
+                CaptionWord("fala", 0.20, 0.40),
+                CaptionWord("Segunda", 0.50, 0.70),
+                CaptionWord("ideia", 0.70, 0.90),
+                CaptionWord("Última", 1.05, 1.30),
+                CaptionWord("fala", 1.30, 1.60),
+            ),
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             narration = Path(temp_dir) / "narration.wav"
@@ -191,7 +249,10 @@ class PipelineZipTests(unittest.TestCase):
                 target = Path(audio_dir) / "narration.wav"
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(narration.read_bytes())
-                return target, [CaptionCue(0.0, 1.0, "estimada")], [0.1, 0.1]
+                return target, [
+                    CaptionCue(0.0, 1.0, "estimada 1"),
+                    CaptionCue(1.0, 2.0, "estimada 2"),
+                ], [1.0, 1.0]
 
             with patch.dict(os.environ, {"OUTPUT_DIR": temp_dir}), patch("app.pipeline.torch.cuda.is_available", return_value=True), patch(
                 "app.pipeline._build_voice_track", side_effect=fake_voice_track
@@ -202,6 +263,14 @@ class PipelineZipTests(unittest.TestCase):
             whisper.transcribe_with_words.assert_called_once()
             whisper.release.assert_called_once()
             self.assertEqual(render_video.call_args.args[2], whisper_cues)
+            self.assertEqual(render_video.call_args.args[1], [1.0, 1.0])
+            transition = render_video.call_args.kwargs["transitions"][0]
+            self.assertEqual((transition.type, transition.duration, transition.duration_explicit), ("fade_black", 0.2, True))
+            timelines = render_video.call_args.kwargs["scene_timelines"]
+            self.assertEqual(
+                [[shot.duration for shot in scene.shots] for scene in timelines],
+                [[0.5, 0.5], [1.0]],
+            )
 
     def test_pipeline_validates_copies_and_aligns_all_shot_images_without_captions(self):
         project = VideoProject(
