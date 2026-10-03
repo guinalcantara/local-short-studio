@@ -28,7 +28,7 @@ O app local gera narração em português brasileiro com Kokoro/CUDA, aplica mov
 - `app/voices.py`: catálogo de vozes Kokoro pt-BR.
 - `app/ui.py`: upload JSON/ZIP, validação, controles de voz, música e legendas.
 - `app/pipeline.py`: ZIP → Kokoro/Chatterbox → Whisper quando necessário → FFmpeg; não adicionar ComfyUI ao caminho padrão.
-- `app/renderer.py`: pan/zoom, crossfade, legendas e MP4.
+- `app/renderer.py`: pan/zoom, cortes, dissolvências, passagem pelo preto, legendas e MP4.
 - `docker-compose.yml`: o serviço padrão é somente `app`; ComfyUI fica no perfil legado `legacy-image`.
 - `docs/PROJECT_PLAN.md`, `docs/USER_GUIDE.md` e `docs/TROUBLESHOOTING.md`: documentação normativa do fluxo atual.
 

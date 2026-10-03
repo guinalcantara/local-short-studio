@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 import tempfile
 from app.captions import CaptionCue, caption_segments, srt_timestamp, wrap_caption, write_ass
-from app.schemas import Shot, VideoProject, example_project
+from app.schemas import SceneTransition, Shot, VideoProject, example_project
 from app.renderer import load_profiles
 from app.voices import DEFAULT_VOICE, normalize_tts_engine, normalize_voice
 
@@ -139,6 +139,71 @@ class ProjectTests(unittest.TestCase):
             VideoProject.model_validate(data)
         with self.assertRaises(ValueError):
             Shot(image_path="pasta/plano.png")
+
+    def test_scene_transitions_accept_all_types_and_survive_serialization(self):
+        project = VideoProject(
+            title="Transições",
+            scenes=[
+                {
+                    "id": "cena_01",
+                    "narration": "Primeira cena.",
+                    "image_path": "cena_01.png",
+                    "transition_to_next": {"type": "cut"},
+                },
+                {
+                    "id": "cena_02",
+                    "narration": "Segunda cena.",
+                    "image_path": "cena_02.png",
+                    "transition_to_next": {"type": "crossfade", "duration_seconds": 0.25},
+                },
+                {
+                    "id": "cena_03",
+                    "narration": "Terceira cena.",
+                    "image_path": "cena_03.png",
+                    "transition_to_next": {"type": "fade_black"},
+                },
+                {
+                    "id": "cena_04",
+                    "narration": "Última cena.",
+                    "image_path": "cena_04.png",
+                },
+            ],
+        )
+
+        exported = VideoProject.from_json_text(project.to_json())
+
+        self.assertEqual(
+            [scene.transition_to_next.type for scene in exported.scenes[:-1]],
+            ["cut", "crossfade", "fade_black"],
+        )
+        self.assertEqual(exported.scenes[1].transition_to_next.duration_seconds, 0.25)
+        self.assertIsNone(exported.scenes[2].transition_to_next.duration_seconds)
+
+    def test_scene_transition_rejects_invalid_duration_type_and_extra_fields(self):
+        invalid = [
+            {"type": "cut", "duration_seconds": 0.2},
+            {"type": "crossfade", "duration_seconds": 0.1},
+            {"type": "fade_black", "duration_seconds": 0.5},
+            {"type": "zoom"},
+            {"type": "crossfade", "unexpected": True},
+        ]
+        for transition in invalid:
+            with self.subTest(transition=transition), self.assertRaises(ValueError):
+                SceneTransition.model_validate(transition)
+
+    def test_transition_is_rejected_on_last_scene(self):
+        with self.assertRaisesRegex(ValueError, "última cena"):
+            VideoProject(
+                title="Última cena inválida",
+                scenes=[
+                    {
+                        "id": "ultima",
+                        "narration": "Fim.",
+                        "image_path": "fim.png",
+                        "transition_to_next": {"type": "cut"},
+                    }
+                ],
+            )
 
     def test_voice_selection_has_safe_fallback(self):
         self.assertEqual(normalize_voice("pm_alex"), "pm_alex")

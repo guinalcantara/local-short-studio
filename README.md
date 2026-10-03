@@ -43,6 +43,8 @@ Use [`examples/modelo_projeto.json`](examples/modelo_projeto.json) para o contra
 
 Em uma cena com `shots`, o primeiro plano repete exatamente `scene.image_path` e começa junto com a cena. Cada plano seguinte usa uma imagem distinta e uma `start_phrase` única da narração. A troca acontece no início dessa frase, usando timestamps de palavras realmente reconhecidas pelo Whisper; não há corte no áudio nem transição entre os planos da mesma cena.
 
+Cada cena, exceto a última, pode declarar `transition_to_next` com `cut`, `crossfade` ou `fade_black`. A duração opcional de fades aceita de 0,15 a 0,45 segundo; quando omitida, usa o padrão do perfil. Projetos antigos continuam usando a dissolvência padrão. As transições afetam somente o vídeo: narração, padding entre cenas, âncoras dos planos e legendas mantêm seus tempos originais.
+
 O bloco opcional `youtube` é apenas metadado preparado para uma integração futura. Ele é validado e preservado no `project.json`, mas não há OAuth, upload, agendamento ou chamada à API nesta versão.
 
 O seletor de mecanismo de narração fica fora do JSON para preservar o contrato do projeto. Kokoro oferece Dora, Alex, Santa e velocidade; Chatterbox usa o pacote dedicado pt-BR e oferece expressividade, controle de ritmo e variação.

@@ -1,10 +1,10 @@
 # Local Short Studio — arquitetura atual
 
-**Estado:** versão operacional baseada em roteiro JSON + ZIP de imagens, com compatibilidade para uma imagem por cena e suporte a múltiplos planos sincronizados. A publicação em plataformas e a geração local de imagens permanecem fora do fluxo ativo.
+**Estado:** versão operacional baseada em roteiro JSON + ZIP de imagens, com compatibilidade para uma imagem por cena, múltiplos planos sincronizados e transições configuráveis entre cenas. A publicação em plataformas e a geração local de imagens permanecem fora do fluxo ativo.
 
 ## Objetivo
 
-Receber cenas já ilustradas, gerar narração local em português brasileiro com Kokoro ou Chatterbox, aplicar movimento de câmera simulado, crossfades, legendas opcionais e exportar um MP4 vertical pronto para revisão.
+Receber cenas já ilustradas, gerar narração local em português brasileiro com Kokoro ou Chatterbox, aplicar movimento de câmera simulado, transições narrativas entre cenas, legendas opcionais e exportar um MP4 vertical pronto para revisão.
 
 ## Fluxo ativo
 
@@ -37,7 +37,9 @@ Os serviços não carregam modelo de imagem no fluxo atual. O cache de Kokoro pe
 
 ## Contrato de entrada
 
-O modelo ativo preserva título, perfil, voz, velocidade, estilo visual, legendas, música e cenas. Cada cena contém `id`, `narration`, `image_path`, `motion`, o `seed` opcional histórico e `shots` opcional. Cada plano contém apenas `image_path`, `start_phrase` opcional e `motion` opcional. `image_prompt` foi removido e chaves desconhecidas são rejeitadas.
+O modelo ativo preserva título, perfil, voz, velocidade, estilo visual, legendas, música e cenas. Cada cena contém `id`, `narration`, `image_path`, `motion`, o `seed` opcional histórico, `shots` opcional e `transition_to_next` opcional, exceto na última cena. Cada plano contém apenas `image_path`, `start_phrase` opcional e `motion` opcional. `image_prompt` foi removido e chaves desconhecidas são rejeitadas.
+
+As fronteiras visuais aceitam corte seco, dissolvência ou passagem pelo preto. Fades usam duração entre 0,15 e 0,45 segundo ou o padrão do perfil; projetos sem configuração preservam a dissolvência legada. A duração é convertida em frames e o renderer protege ao menos três frames do primeiro plano da cena de entrada depois do efeito. O áudio não recebe fade nem pausa adicional.
 
 A narração completa de cada cena é gerada em uma única chamada normal do mecanismo de voz, sem pausa fixa inserida entre frases. O padding curto continua existindo somente entre cenas. Quando há `shots`, o Whisper roda mesmo sem legendas visuais; somente correspondências lexicais realmente observadas podem determinar um corte.
 
@@ -53,9 +55,9 @@ O bloco opcional `youtube` contém somente metadados validados e é preservado n
 2. JSON e ZIP inválidos bloqueiam a geração com mensagens úteis.
 3. Todas as imagens referenciadas pelos planos são validadas antes da voz e copiadas apenas para a pasta da execução.
 4. O mecanismo escolhido usa CUDA sequencialmente para todas as falas; Kokoro e Chatterbox não são usados ao mesmo tempo.
-5. FFmpeg gera MP4 vertical com cortes secos entre planos, crossfade somente entre cenas, movimentos, áudio e legendas opcionais.
+5. FFmpeg gera MP4 vertical com cortes secos entre planos e transições `cut`, `crossfade` ou `fade_black` entre cenas, preservando movimentos, áudio e legendas opcionais.
 6. Metadados `youtube` são aceitos, validados e preservados sem publicação.
-7. Testes cobrem esquema, voz por bloco, alinhamento lexical, segurança do ZIP e renderização da timeline.
+7. Testes cobrem esquema, voz por bloco, alinhamento lexical, segurança do ZIP, transições mistas e renderização da timeline.
 
 ## Próximas etapas, não implementadas
 

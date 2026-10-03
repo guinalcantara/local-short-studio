@@ -34,6 +34,12 @@ Cada `start_phrase` precisa ser uma sequência contígua de palavras dentro de u
 
 Os cortes visuais usam somente palavras realmente reconhecidas, nunca palavras que o sistema interpolou para preservar o texto das legendas. Se a mensagem indicar ausência de alinhamento lexical ou um plano curto demais, ajuste a `start_phrase`, aumente a distância entre âncoras ou simplifique a narração. O pipeline para em vez de trocar a imagem no instante errado.
 
+## Transição não cabe no primeiro plano da próxima cena
+
+Uma dissolvência ou passagem pelo preto precisa terminar e ainda deixar pelo menos três frames do primeiro plano visíveis antes de uma troca interna. Reduza `duration_seconds`, mova a primeira `start_phrase` para mais tarde ou use `cut`. O erro informa a cena de saída, a cena de entrada e as durações em frames.
+
+Projetos antigos sem `transition_to_next` continuam usando a dissolvência padrão. Em cenas excepcionalmente curtas, o app pode encurtar essa transição implícita ou substituí-la por corte seco e informar a decisão no progresso, sem mudar a voz.
+
 ## Resolução ou formato incompatível
 
 Use PNG, JPG, JPEG ou WebP válidos. Imagens excessivamente grandes podem exceder `ZIP_MAX_IMAGE_PIXELS` ou `ZIP_MAX_IMAGE_BYTES`; redimensione-as antes de criar o ZIP.

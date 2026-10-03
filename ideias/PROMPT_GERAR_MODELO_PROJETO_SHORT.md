@@ -2,7 +2,7 @@
 
 Copie as instruções abaixo para um chat com geração de imagens. No fim, informe somente o título ou tema do Short. O chat deverá entregar `modelo_projeto.json` e `imagens_cenas.zip` para o Local Short Studio.
 
-> **Contrato ativo:** este prompt usa `scenes[].shots`, aceito pelo Local Short Studio para sincronizar de 2 a 4 planos por cena com a narração contínua.
+> **Contrato ativo:** este prompt usa `scenes[].shots` e `transition_to_next`, aceitos pelo Local Short Studio para sincronizar planos com a narração contínua e variar as passagens entre cenas.
 
 ## Instruções para o chat
 
@@ -31,6 +31,13 @@ Crie um YouTube Short em português brasileiro sobre o tema informado. O usuári
 - Salve PNG, JPG, JPEG ou WebP com nomes simples e únicos, sem diretórios. Use exatamente os mesmos nomes em cada `shots[].image_path` e no ZIP. Exemplo: `cena_01_plano_01.png`, `cena_01_plano_02.png`.
 - Se a geração de imagens não estiver disponível, diga isso claramente. Não simule arquivos nem entregue JSON que aponta para imagens inexistentes.
 
+### Transições entre cenas
+
+- Em cada cena, exceto a última, escolha `transition_to_next` pela função narrativa. Use `cut` em ganchos, revelações, respostas e mudanças rápidas; use `crossfade` quando lugar ou ideia continuam; use `fade_black` raramente, apenas para uma mudança clara de tempo ou assunto.
+- Prefira `cut` e `crossfade` ao longo do Short. Não use duas passagens pelo preto seguidas e não alterne efeitos mecanicamente.
+- Não marque tempos na narração nem nos planos. Em geral, omita `duration_seconds` para usar o padrão do app. Se houver uma justificativa editorial, `crossfade` e `fade_black` aceitam de 0.15 a 0.45 segundo; `cut` nunca aceita duração.
+- A última cena deve omitir `transition_to_next`. As transições são somente visuais e não criam pausas ou fades no áudio.
+
 ### Metadados preparados para publicação futura
 
 Preencha o bloco opcional `youtube` no JSON. Ele apenas acompanha o projeto: o aplicativo ainda não usa OAuth, agenda ou API de publicação. Escreva roteiro, narração e metadados de publicação em português brasileiro; `visual_style` é a exceção técnica e fica em inglês, como no modelo atual.
@@ -52,7 +59,7 @@ Preencha o bloco opcional `youtube` no JSON. Ele apenas acompanha o projeto: o a
 
 ### Formato do JSON
 
-Use os campos e tipos abaixo. O exemplo mostra somente uma cena para explicar o formato; a entrega real deve conter 6 a 8 cenas e o total de palavras solicitado. `start_phrase` é texto copiado literalmente de `narration`, sem aspas adicionais. A primeira imagem da cena aparece em `image_path` e novamente em `shots[0].image_path` por compatibilidade.
+Use os campos e tipos abaixo. O exemplo mostra somente duas cenas para explicar o formato; a entrega real deve conter 6 a 8 cenas e o total de palavras solicitado. `start_phrase` é texto copiado literalmente de `narration`, sem aspas adicionais. A primeira imagem da cena aparece em `image_path` e novamente em `shots[0].image_path` por compatibilidade.
 
 ```json
 {
@@ -71,6 +78,17 @@ Use os campos e tipos abaixo. O exemplo mostra somente uma cena para explicar o 
       "shots": [
         { "image_path": "cena_01_plano_01.png" },
         { "image_path": "cena_01_plano_02.png", "start_phrase": "Mas os fósseis contam" }
+      ],
+      "transition_to_next": { "type": "crossfade" }
+    },
+    {
+      "id": "cena_02_contexto",
+      "narration": "Esses membros tinham músculos e articulações funcionais. Eles poderiam ajudar a segurar uma presa perto do peito.",
+      "image_path": "cena_02_plano_01.png",
+      "motion": "slow_pull_out",
+      "shots": [
+        { "image_path": "cena_02_plano_01.png" },
+        { "image_path": "cena_02_plano_02.png", "start_phrase": "Eles poderiam ajudar" }
       ]
     }
   ],
@@ -95,14 +113,14 @@ Use os campos e tipos abaixo. O exemplo mostra somente uma cena para explicar o 
 
 Regras adicionais:
 
-- Preserve os nomes e tipos de `title`, `profile`, `voice`, `speech_speed`, `visual_style`, `captions`, `scenes`, `id`, `narration`, `image_path`, `motion` e do bloco `youtube` já aceitos. A única extensão de renderização nesta etapa é `scenes[].shots`. Os JSON antigos, sem `shots`, devem continuar válidos após a implementação. `visual_style` descreve apenas a unidade visual em inglês; não inclua descrições de planos nesse campo.
+- Preserve os nomes e tipos de `title`, `profile`, `voice`, `speech_speed`, `visual_style`, `captions`, `scenes`, `id`, `narration`, `image_path`, `motion` e do bloco `youtube` já aceitos. As extensões visuais são `scenes[].shots` e `scenes[].transition_to_next`. JSONs antigos sem esses campos continuam válidos. `visual_style` descreve apenas a unidade visual em inglês; não inclua descrições de planos nesse campo.
 - `id` é único e contém apenas letras sem acento, números, hífen ou sublinhado. `narration` tem até 1200 caracteres por cena. `image_path` é somente basename de uma imagem suportada. `motion` pertence a `slow_push_in`, `slow_pull_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static` ou `auto`.
 - Não inclua `image_prompt`, descrição visual, `seed`, `negative_prompt`, `lora`, `controlnet`, `music_path`, duração ou timestamp por plano, campos de efeito sonoro ou chaves fora do contrato.
 - O arquivo JSON deve ser válido, sem comentários, vírgulas sobrando, bloco Markdown ou texto adicional.
 
 ### Validação e entrega
 
-Antes de entregar, valide o JSON e conte as palavras faladas. Confirme que cada cena tem 2 a 4 planos, que `shots[0].image_path == scene.image_path`, que cada `start_phrase` ocorre exatamente uma vez na fala da cena e que as âncoras estão em ordem. Confira correspondência exata, sem duplicatas, entre todos os arquivos referenciados nos planos e as imagens do ZIP; a referência duplicada entre `scene.image_path` e `shots[0].image_path` aponta para **um único arquivo**. Confira também o bloco `youtube` e a ausência de dados de agendamento ou credenciais.
+Antes de entregar, valide o JSON e conte as palavras faladas. Confirme que cada cena tem 2 a 4 planos, que `shots[0].image_path == scene.image_path`, que cada `start_phrase` ocorre exatamente uma vez na fala da cena e que as âncoras estão em ordem. Confira `transition_to_next` em todas as cenas menos a última, sem duração em `cut` e sem passagens pelo preto consecutivas. Confira correspondência exata, sem duplicatas, entre todos os arquivos referenciados nos planos e as imagens do ZIP; a referência duplicada entre `scene.image_path` e `shots[0].image_path` aponta para **um único arquivo**. Confira também o bloco `youtube` e a ausência de dados de agendamento ou credenciais.
 
 Entregue links para `modelo_projeto.json` e `imagens_cenas.zip`, com prévias ou links individuais das imagens. Informe título e duração estimada em uma linha, sem duplicar a narração.
 

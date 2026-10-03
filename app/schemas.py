@@ -88,6 +88,19 @@ class Shot(BaseModel):
         return _safe_image_path(value)
 
 
+class SceneTransition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["cut", "crossfade", "fade_black"]
+    duration_seconds: float | None = Field(default=None, ge=0.15, le=0.45)
+
+    @model_validator(mode="after")
+    def validate_duration(self) -> "SceneTransition":
+        if self.type == "cut" and self.duration_seconds is not None:
+            raise ValueError("duration_seconds deve ser omitido quando type for cut")
+        return self
+
+
 class Scene(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -97,6 +110,7 @@ class Scene(BaseModel):
     motion: Motion = "auto"
     seed: int | None = None
     shots: list[Shot] | None = None
+    transition_to_next: SceneTransition | None = None
 
     @field_validator("id")
     @classmethod
@@ -213,6 +227,14 @@ class VideoProject(BaseModel):
         if value not in {"short_vertical", "video_landscape"}:
             raise ValueError("perfil deve ser short_vertical ou video_landscape")
         return value
+
+    @model_validator(mode="after")
+    def validate_scene_transitions(self) -> "VideoProject":
+        if self.scenes[-1].transition_to_next is not None:
+            raise ValueError(
+                f"cena {self.scenes[-1].id}: transition_to_next não é permitido na última cena"
+            )
+        return self
 
     @classmethod
     def from_json_file(cls, path: str | Path) -> "VideoProject":

@@ -57,7 +57,10 @@ with st.expander("Revisar roteiro e metadados", expanded=False):
         "JSON do projeto",
         value=project_text,
         height=430,
-        help="Cada cena precisa de narration e image_path. O campo opcional shots aceita de 2 a 4 planos com imagens do ZIP.",
+        help=(
+            "Cada cena precisa de narration e image_path. O campo opcional shots aceita de 2 a 4 "
+            "planos com imagens do ZIP; transition_to_next escolhe a passagem para a cena seguinte."
+        ),
     )
 
 parsed: VideoProject | None = None
@@ -70,6 +73,27 @@ except Exception as exc:
 if parsed is not None:
     parsed_plan_count = len(project_image_paths(parsed))
     st.caption(f"Projeto válido: {len(parsed.scenes)} cenas e {parsed_plan_count} planos visuais.")
+    transition_summaries = []
+    transition_labels = {
+        "cut": "corte seco",
+        "crossfade": "dissolvência",
+        "fade_black": "passagem pelo preto",
+    }
+    for scene in parsed.scenes[:-1]:
+        transition = scene.transition_to_next
+        if transition is None:
+            transition_summaries.append(f"{scene.id}: dissolvência padrão")
+            continue
+        duration = (
+            f" ({transition.duration_seconds:.2f}s)"
+            if transition.duration_seconds is not None
+            else " (duração padrão)" if transition.type != "cut" else ""
+        )
+        transition_summaries.append(
+            f"{scene.id}: {transition_labels[transition.type]}{duration}"
+        )
+    if transition_summaries:
+        st.caption("Transições entre cenas: " + " · ".join(transition_summaries))
 
 images_upload = st.file_uploader(
     "2. Importe as imagens das cenas (.zip)",
