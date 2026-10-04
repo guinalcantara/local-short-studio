@@ -54,7 +54,7 @@ services:
       RENDER_PROFILES: /workspace/config/render_profiles.json
       INPUT_DIR: /workspace/input
       OUTPUT_DIR: /workspace/output
-      CAPTION_FONT: Inter
+      CAPTION_FONT: Montserrat
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
     deploy:

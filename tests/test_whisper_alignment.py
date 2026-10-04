@@ -92,7 +92,7 @@ class WhisperAlignmentTests(unittest.TestCase):
                 shot_index=1,
             )
 
-    def test_ass_uses_whisper_karaoke_without_scale_animation(self):
+    def test_ass_uses_whisper_karaoke_with_pop_entrance(self):
         import tempfile
         from pathlib import Path
 
@@ -110,9 +110,9 @@ class WhisperAlignmentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             content = write_ass(cues, Path(temp_dir) / "captions.ass").read_text(encoding="utf-8-sig")
         self.assertIn("{\\kf", content)
-        self.assertNotIn("\\fscx", content)
-        self.assertNotIn("\\fscy", content)
-        self.assertNotIn("\\alpha", content)
+        self.assertIn("\\fscx72\\fscy72", content)
+        self.assertIn("\\alpha&HFF&", content)
+        self.assertIn("\\t(0,120", content)
         self.assertNotIn("\\pos(", content)
         self.assertIn("&H00000000", content)
         self.assertEqual(content.count("Dialogue:"), 1)

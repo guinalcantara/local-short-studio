@@ -228,18 +228,27 @@ class ProjectTests(unittest.TestCase):
         self.assertAlmostEqual(segments[0].start, 1.0)
         self.assertAlmostEqual(segments[-1].end, 5.0)
         self.assertTrue(all(segment.end > segment.start for segment in segments))
+        self.assertTrue(all(len(segment.words) <= 3 for segment in segments))
         self.assertTrue(all(len(wrap_caption(segment.text, max_chars=24).splitlines()) <= 2 for segment in segments))
 
-    def test_ass_captions_include_inter_and_karaoke_tags(self):
+    def test_ass_captions_use_montserrat_and_configurable_vertical_position(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = write_ass(
                 [CaptionCue(0.0, 2.0, "Uma legenda curta")],
                 Path(temp_dir) / "captions.ass",
+                vertical_position_percent=45,
             )
             content = target.read_text(encoding="utf-8-sig")
-        self.assertIn("Style: Caption,Inter,52", content)
+        self.assertIn("Style: Caption,Montserrat,72", content)
         self.assertIn("{\\kf", content)
         self.assertIn("PlayResX: 1080", content)
+        self.assertIn("\\b800", content)
+        self.assertIn("\\an5\\pos(540,1056)", content)
+        self.assertIn("UMA", content)
+        self.assertIn("LEGENDA", content)
+        self.assertIn("CURTA", content)
+        self.assertIn("\\fscx72\\fscy72", content)
+        self.assertIn("\\alpha&HFF&", content)
 
     def test_future_landscape_profile_exists_but_is_disabled(self):
         profiles = load_profiles("config/render_profiles.json")

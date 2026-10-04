@@ -53,6 +53,8 @@ No Chatterbox, também é possível enviar um áudio de referência de 5 a 10 se
 
 Cada `scene.narration` é sintetizada como um bloco contínuo, preservando as pausas indicadas pela pontuação. Narrações devem escrever nomes completos para melhorar a pronúncia: use **“tiranossauro rex”**, nunca “T. rex”, “T-Rex” ou “T rex”.
 
+Quando ativadas, as legendas usam Montserrat ExtraBold em maiúsculas, com contorno escuro e no máximo três palavras por bloco. Cada bloco entra com um pop curto de escala/opacidade para receber foco visual. A interface permite ajustar o tamanho da fonte e a altura na tela para cada geração; 50% corresponde ao centro vertical.
+
 ## Saídas e testes
 
 Cada execução cria `output/<titulo>_<data>/` com JSON, texto, imagens usadas, WAVs, MP4 e arquivos SRT/ASS quando as legendas estão ativas.

@@ -72,7 +72,7 @@ O seletor **Voz da narração** oferece somente vozes Kokoro pt-BR:
 
 A voz válida do JSON é selecionada inicialmente; um código inválido volta para Dora. Todas as cenas usam a escolha atual. A velocidade aceita valores de 0.75 a 1.25.
 
-Música é opcional e deve ter licença de uso. Legendas são opcionais: quando ligadas, o vídeo recebe burn-in com fonte Inter, no máximo duas linhas e destaque progressivo por palavra. Os arquivos `.srt` e `.ass` também são salvos junto para inspeção.
+Música é opcional e deve ter licença de uso. Legendas são opcionais: quando ligadas, o vídeo recebe burn-in com Montserrat ExtraBold em maiúsculas, contorno escuro, até três palavras por bloco, entrada em pop e destaque progressivo por palavra. Os controles **Tamanho da fonte da legenda** e **Altura da legenda na tela** são aplicados apenas à geração atual. Na altura, 0% representa a base, 50% o centro e valores maiores movem o texto para cima. Os arquivos `.srt` e `.ass` também são salvos junto para inspeção.
 
 ### Chatterbox PT-BR
 
@@ -111,6 +111,6 @@ docker compose --profile legacy-image up -d comfyui
 Esse perfil não é necessário para enviar JSON + ZIP ou gerar o Short.
 ## Sincronização por Whisper
 
-Com legendas ativas ou múltiplos planos, o áudio final é transcrito localmente com Whisper depois da narração. Os timestamps reais por palavra alimentam as trocas de plano e, quando solicitadas, as legendas com fonte Inter, no máximo duas linhas e destaque progressivo por palavra. A mesma transcrição é reutilizada para os dois recursos. Na primeira geração, o modelo `small` pode ser baixado automaticamente; o cache fica em `models/kokoro/`.
+Com legendas ativas ou múltiplos planos, o áudio final é transcrito localmente com Whisper depois da narração. Os timestamps reais por palavra alimentam as trocas de plano e, quando solicitadas, as legendas em maiúsculas, em blocos de até três palavras, com entrada em pop e destaque progressivo. A mesma transcrição é reutilizada para os dois recursos. Na primeira geração, o modelo `small` pode ser baixado automaticamente; o cache fica em `models/kokoro/`.
 
 O tamanho do modelo, dispositivo e tipo de calculo podem ser ajustados no `.env` com `WHISPER_MODEL`, `WHISPER_DEVICE` e `WHISPER_COMPUTE_TYPE`.
