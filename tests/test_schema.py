@@ -242,7 +242,13 @@ class ProjectTests(unittest.TestCase):
         self.assertIn("Style: Caption,Montserrat,72", content)
         self.assertIn("{\\kf", content)
         self.assertIn("PlayResX: 1080", content)
-        self.assertIn("{\\b800\\an5\\pos(540,1056)}", content)
+        self.assertIn("\\b800", content)
+        self.assertIn("\\an5\\pos(540,1056)", content)
+        self.assertIn("UMA", content)
+        self.assertIn("LEGENDA", content)
+        self.assertIn("CURTA", content)
+        self.assertIn("\\fscx72\\fscy72", content)
+        self.assertIn("\\alpha&HFF&", content)
 
     def test_future_landscape_profile_exists_but_is_disabled(self):
         profiles = load_profiles("config/render_profiles.json")

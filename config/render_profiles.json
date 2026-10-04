@@ -17,6 +17,8 @@
     "motion_easing": "quintic",
     "caption_font_size": 72,
     "caption_height_percent": 45,
+    "caption_uppercase": true,
+    "caption_entrance_effect": "pop",
     "caption_margin_vertical": 250
   },
   "video_landscape": {
@@ -37,6 +39,8 @@
     "motion_easing": "quintic",
     "caption_font_size": 64,
     "caption_height_percent": 45,
+    "caption_uppercase": true,
+    "caption_entrance_effect": "pop",
     "caption_margin_vertical": 90
   }
 }

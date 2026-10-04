@@ -10,8 +10,10 @@ from typing import Any, Literal
 
 from app.captions import (
     DEFAULT_CAPTION_FONT,
+    DEFAULT_CAPTION_ENTRANCE_EFFECT,
     DEFAULT_CAPTION_FONT_SIZE,
     DEFAULT_CAPTION_HEIGHT_PERCENT,
+    DEFAULT_CAPTION_UPPERCASE,
     CaptionCue,
     write_ass,
     write_srt,
@@ -234,6 +236,8 @@ def render_video(
     caption_font: str = DEFAULT_CAPTION_FONT,
     caption_font_size: int | None = None,
     caption_height_percent: float | None = None,
+    caption_uppercase: bool | None = None,
+    caption_entrance_effect: str | None = None,
     encoder_mode: str | None = None,
     assets_dir: str | Path = "/workspace/assets",
     image_effects_enabled: bool = True,
@@ -414,7 +418,6 @@ def render_video(
     graph.append(f"[{current_label}]fps={fps},format=yuv420p[vbase]")
     video_label = "vbase"
     if captions_enabled:
-        srt_path = write_srt(cues, out.with_suffix(".srt"))
         fonts_dir = Path(assets_dir) / "fonts"
         resolved_caption_font_size = int(
             caption_font_size
@@ -426,6 +429,21 @@ def render_video(
             if caption_height_percent is not None
             else profile.get("caption_height_percent", DEFAULT_CAPTION_HEIGHT_PERCENT)
         )
+        resolved_caption_uppercase = (
+            bool(profile.get("caption_uppercase", DEFAULT_CAPTION_UPPERCASE))
+            if caption_uppercase is None
+            else bool(caption_uppercase)
+        )
+        resolved_caption_entrance_effect = (
+            str(profile.get("caption_entrance_effect", DEFAULT_CAPTION_ENTRANCE_EFFECT))
+            if caption_entrance_effect is None
+            else caption_entrance_effect
+        )
+        srt_path = write_srt(
+            cues,
+            out.with_suffix(".srt"),
+            uppercase=resolved_caption_uppercase,
+        )
         ass_path = write_ass(
             cues,
             out.with_suffix(".ass"),
@@ -435,6 +453,8 @@ def render_video(
             vertical_position_percent=max(0.0, min(100.0, resolved_caption_height)),
             play_res_x=width,
             play_res_y=height,
+            uppercase=resolved_caption_uppercase,
+            entrance_effect=resolved_caption_entrance_effect,
         )
         graph.append(
             f"[vbase]subtitles='{_quote_filter_path(ass_path)}':fontsdir='{_quote_filter_path(fonts_dir)}'[vcap]"

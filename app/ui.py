@@ -115,7 +115,7 @@ captions_enabled = left.checkbox(
     "Adicionar legendas modernas",
     value=True,
     help=(
-        "Usa Montserrat ExtraBold, blocos de até três palavras e destaque progressivo. "
+        "Usa Montserrat ExtraBold em maiúsculas, blocos de até três palavras, entrada em pop e destaque progressivo. "
         "Desmarcado: não queima texto no vídeo."
     ),
 )

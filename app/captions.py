@@ -10,6 +10,8 @@ DEFAULT_CAPTION_FONT_WEIGHT = 800
 DEFAULT_CAPTION_FONT_SIZE = 72
 DEFAULT_CAPTION_HEIGHT_PERCENT = 45
 CAPTION_MAX_WORDS = 3
+DEFAULT_CAPTION_UPPERCASE = True
+DEFAULT_CAPTION_ENTRANCE_EFFECT = "pop"
 
 
 @dataclass
@@ -148,7 +150,12 @@ def caption_segments(
     return segments
 
 
-def write_srt(cues: list[CaptionCue], path: str | Path) -> Path:
+def write_srt(
+    cues: list[CaptionCue],
+    path: str | Path,
+    *,
+    uppercase: bool = DEFAULT_CAPTION_UPPERCASE,
+) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     blocks = []
@@ -157,7 +164,7 @@ def write_srt(cues: list[CaptionCue], path: str | Path) -> Path:
             continue
         blocks.append(
             f"{index}\n{srt_timestamp(segment.start)} --> {srt_timestamp(segment.end)}\n"
-            f"{wrap_caption(segment.text, max_chars=24)}"
+            f"{wrap_caption(segment.text.upper() if uppercase else segment.text, max_chars=24)}"
         )
     target.write_text("\n\n".join(blocks) + ("\n" if blocks else ""), encoding="utf-8")
     return target
@@ -167,7 +174,7 @@ def _ass_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", r"\N")
 
 
-def _karaoke_text(segment: CaptionSegment) -> str:
+def _karaoke_text(segment: CaptionSegment, *, uppercase: bool = DEFAULT_CAPTION_UPPERCASE) -> str:
     if segment.word_timings:
         parts: list[str] = []
         previous_end: float | None = None
@@ -175,7 +182,8 @@ def _karaoke_text(segment: CaptionSegment) -> str:
             if previous_end is not None:
                 gap = max(0, round((word.start - previous_end) * 100))
                 parts.append(f"{{\\kf{gap}}} " if gap else " ")
-            parts.append(f"{{\\kf{max(1, round((word.end - word.start) * 100))}}}{_ass_escape(word.text)}")
+            text = word.text.upper() if uppercase else word.text
+            parts.append(f"{{\\kf{max(1, round((word.end - word.start) * 100))}}}{_ass_escape(text)}")
             previous_end = word.end
         return "".join(parts)
     total_weight = sum(_word_weight(word) for word in segment.words)
@@ -189,7 +197,16 @@ def _karaoke_text(segment: CaptionSegment) -> str:
             duration = max(1, round(total_centiseconds * _word_weight(word) / total_weight))
         durations.append(duration)
         consumed += duration
-    return " ".join(f"{{\\kf{duration}}}{_ass_escape(word)}" for word, duration in zip(segment.words, durations))
+    return " ".join(
+        f"{{\\kf{duration}}}{_ass_escape(word.upper() if uppercase else word)}"
+        for word, duration in zip(segment.words, durations)
+    )
+
+
+def _entrance_effect_tags(effect: str | None) -> str:
+    if effect == "pop":
+        return r"\fscx72\fscy72\alpha&HFF&\t(0,120,\fscx100\fscy100\alpha&H00&)"
+    return ""
 
 
 def write_ass(
@@ -203,6 +220,8 @@ def write_ass(
     vertical_position_percent: float | None = None,
     play_res_x: int = 1080,
     play_res_y: int = 1920,
+    uppercase: bool = DEFAULT_CAPTION_UPPERCASE,
+    entrance_effect: str | None = DEFAULT_CAPTION_ENTRANCE_EFFECT,
 ) -> Path:
     """Write bold short-form ASS captions with word-by-word color progress."""
     target = Path(path)
@@ -213,7 +232,7 @@ def write_ass(
     )
     alignment = 5 if positioned else 2
     style_margin = 0 if positioned else margin_vertical
-    event_overrides = f"\\b{max(100, min(900, int(font_weight)))}"
+    event_overrides = f"\\b{max(100, min(900, int(font_weight)))}{_entrance_effect_tags(entrance_effect)}"
     if positioned:
         event_overrides += f"\\an5\\pos({play_res_x // 2},{position_y})"
     style_override = f"{{{event_overrides}}}"
@@ -235,7 +254,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,Effect,Text
     for segment in caption_segments(cues):
         events.append(
             f"Dialogue: 0,{_ass_timestamp(segment.start)},{_ass_timestamp(segment.end)},"
-            f"Caption,,0,0,0,{style_override}{_karaoke_text(segment)}"
+            f"Caption,,0,0,0,{style_override}{_karaoke_text(segment, uppercase=uppercase)}"
         )
     target.write_text(header + "\n".join(events) + ("\n" if events else ""), encoding="utf-8-sig")
     return target
