@@ -1,4 +1,5 @@
 import math
+from array import array
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,7 +11,15 @@ import wave
 from unittest.mock import patch
 
 from app.captions import CaptionCue, CaptionWord
-from app.renderer import RenderScene, RenderShot, RenderTransition, render_video, resolve_transitions
+from app.music_catalog import calculate_catalog_gain, measure_integrated_lufs
+from app.renderer import (
+    RenderScene,
+    RenderShot,
+    RenderTransition,
+    bounded_music_fades,
+    render_video,
+    resolve_transitions,
+)
 
 
 def write_ppm(path: Path, color: tuple[int, int, int]) -> None:
@@ -23,7 +32,13 @@ def write_ppm(path: Path, color: tuple[int, int, int]) -> None:
     path.write_bytes(f"P6\n{width} {height}\n255\n".encode("ascii") + data)
 
 
-def write_wav(path: Path, seconds: float = 1.25) -> None:
+def write_wav(
+    path: Path,
+    seconds: float = 1.25,
+    *,
+    amplitude: int = 2500,
+    frequency: float = 440.0,
+) -> None:
     rate = 24000
     count = round(rate * seconds)
     with wave.open(str(path), "wb") as handle:
@@ -32,7 +47,7 @@ def write_wav(path: Path, seconds: float = 1.25) -> None:
         handle.setframerate(rate)
         frames = bytearray()
         for sample in range(count):
-            value = int(2500 * math.sin(2 * math.pi * 440 * sample / rate))
+            value = int(amplitude * math.sin(2 * math.pi * frequency * sample / rate))
             frames.extend(struct.pack("<h", value))
         handle.writeframes(frames)
 
@@ -100,6 +115,43 @@ class RendererSmokeTests(unittest.TestCase):
             check=True,
         )
         return float(json.loads(probe.stdout)["format"]["duration"])
+
+    def stream_durations(self, output: Path) -> dict[str, float]:
+        probe = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-show_entries", "stream=codec_type,duration",
+                "-of", "json", str(output),
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return {
+            stream["codec_type"]: float(stream["duration"])
+            for stream in json.loads(probe.stdout)["streams"]
+            if stream.get("duration") is not None
+        }
+
+    def audio_band_rms(
+        self,
+        output: Path,
+        frequency: float,
+        start: float,
+        duration: float,
+    ) -> float:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", str(start),
+                "-t", str(duration), "-i", str(output), "-vn",
+                "-af", f"bandpass=f={frequency}:width_type=h:w=70",
+                "-ac", "1", "-ar", "48000", "-f", "f32le", "-",
+            ],
+            capture_output=True,
+            check=True,
+        )
+        samples = array("f")
+        samples.frombytes(result.stdout)
+        return math.sqrt(sum(sample * sample for sample in samples) / max(1, len(samples)))
 
     def tearDown(self):
         self.temp.cleanup()
@@ -320,6 +372,98 @@ class RendererSmokeTests(unittest.TestCase):
         final_command = run.call_args.args[0]
         filter_complex = final_command[final_command.index("-filter_complex") + 1]
         self.assertIn("volume=1.000", filter_complex)
+
+    def test_catalog_music_uses_bounded_fades_trim_and_limiter(self):
+        self.assertEqual(bounded_music_fades(0.65, 0.5, 0.8), (0.25, 0.4))
+        with patch("app.renderer._run") as run:
+            render_video(
+                self.images,
+                [0.2, 0.25],
+                [],
+                self.root / "catalog_music.mp4",
+                profile=self.profile,
+                narration_path=self.audio,
+                motions=["static", "static"],
+                captions_enabled=False,
+                music_path=self.audio,
+                music_volume=0.025,
+                music_fade_in_seconds=0.5,
+                music_fade_out_seconds=0.8,
+                encoder_mode="libx264",
+            )
+
+        final_command = run.call_args.args[0]
+        filter_complex = final_command[final_command.index("-filter_complex") + 1]
+        self.assertIn("atrim=duration=1.0000", filter_complex)
+        self.assertIn("afade=t=in", filter_complex)
+        self.assertIn("afade=t=out", filter_complex)
+        self.assertIn("normalize=0", filter_complex)
+        self.assertIn("alimiter=limit=0.95", filter_complex)
+
+    def test_catalog_mp3_mix_loops_fades_and_tracks_two_voice_levels(self):
+        music_wav = self.root / "music_source.wav"
+        music_mp3 = self.root / "music_source.mp3"
+        loud_voice = self.root / "voice_loud.wav"
+        quiet_voice = self.root / "voice_quiet.wav"
+        write_wav(music_wav, 1.0, amplitude=12000, frequency=1000.0)
+        write_wav(loud_voice, 2.25, amplitude=6000, frequency=440.0)
+        write_wav(quiet_voice, 2.25, amplitude=1200, frequency=440.0)
+        subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(music_wav),
+                "-codec:a", "libmp3lame", "-q:a", "3", str(music_mp3),
+            ],
+            check=True,
+        )
+
+        music_lufs = measure_integrated_lufs(music_mp3)
+        loud_gain = calculate_catalog_gain(12, measure_integrated_lufs(loud_voice), music_lufs)
+        quiet_gain = calculate_catalog_gain(12, measure_integrated_lufs(quiet_voice), music_lufs)
+        self.assertLess(quiet_gain, loud_gain)
+
+        def mixed_output(name: str, voice: Path, gain: float) -> Path:
+            output = self.root / name
+            render_video(
+                [self.images[0]],
+                [2.0],
+                [],
+                output,
+                profile=self.profile,
+                narration_path=voice,
+                motions=["static"],
+                captions_enabled=False,
+                music_path=music_mp3,
+                music_volume=gain,
+                music_fade_in_seconds=0.5,
+                music_fade_out_seconds=0.8,
+                encoder_mode="libx264",
+                image_effects_enabled=False,
+            )
+            return output
+
+        loud_output = mixed_output("catalog_loud.mp4", loud_voice, loud_gain)
+        quiet_output = mixed_output("catalog_quiet.mp4", quiet_voice, quiet_gain)
+        muted_output = mixed_output("catalog_muted.mp4", loud_voice, 0.0)
+
+        loud_music_mid = self.audio_band_rms(loud_output, 1000.0, 1.20, 0.08)
+        quiet_music_mid = self.audio_band_rms(quiet_output, 1000.0, 1.20, 0.08)
+        muted_music_mid = self.audio_band_rms(muted_output, 1000.0, 1.20, 0.08)
+        loud_voice_mid = self.audio_band_rms(loud_output, 440.0, 1.20, 0.08)
+        music_start = self.audio_band_rms(loud_output, 1000.0, 0.02, 0.08)
+        music_end = self.audio_band_rms(loud_output, 1000.0, 2.10, 0.08)
+
+        self.assertGreater(loud_music_mid, muted_music_mid * 2.0)
+        self.assertLess(quiet_music_mid, loud_music_mid)
+        self.assertLess(loud_music_mid, loud_voice_mid)
+        self.assertLess(music_start, loud_music_mid)
+        self.assertLess(music_end, loud_music_mid)
+        self.assertAlmostEqual(self.video_duration(loud_output), 2.2, delta=0.06)
+        self.assertAlmostEqual(self.video_duration(quiet_output), 2.2, delta=0.06)
+        durations = self.stream_durations(loud_output)
+        self.assertLessEqual(
+            abs(durations["video"] - durations["audio"]),
+            1 / self.profile["fps"] + 0.03,
+        )
 
 
 if __name__ == "__main__":

@@ -75,6 +75,13 @@ class Captions(BaseModel):
     theme: str = "modern_blue"
 
 
+class Soundtrack(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    track_id: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9_]+$")
+    volume_percent: int = Field(ge=0, le=12, strict=True)
+
+
 class Shot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -217,6 +224,7 @@ class VideoProject(BaseModel):
     speech_speed: float = Field(default=1.0, ge=0.75, le=1.25)
     visual_style: str = Field(default="cinematic digital illustration, coherent blue and white palette", max_length=600)
     captions: Captions = Field(default_factory=Captions)
+    soundtrack: Soundtrack | None = None
     music_path: str | None = None
     youtube: YouTubeMetadata | None = None
     scenes: list[Scene] = Field(min_length=1, max_length=20)
@@ -230,6 +238,8 @@ class VideoProject(BaseModel):
 
     @model_validator(mode="after")
     def validate_scene_transitions(self) -> "VideoProject":
+        if self.soundtrack is not None and self.music_path is not None:
+            raise ValueError("soundtrack e music_path não podem ser usados ao mesmo tempo")
         if self.scenes[-1].transition_to_next is not None:
             raise ValueError(
                 f"cena {self.scenes[-1].id}: transition_to_next não é permitido na última cena"

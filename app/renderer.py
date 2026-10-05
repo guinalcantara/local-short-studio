@@ -219,6 +219,22 @@ def _encoder_args(encoder_mode: str, crf: int, preset: str) -> list[str]:
     return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf)]
 
 
+def bounded_music_fades(
+    duration: float,
+    fade_in_seconds: float,
+    fade_out_seconds: float,
+) -> tuple[float, float]:
+    """Fit the requested fades inside the final video duration."""
+    total = max(0.0, float(duration))
+    fade_in = max(0.0, float(fade_in_seconds))
+    fade_out = max(0.0, float(fade_out_seconds))
+    requested = fade_in + fade_out
+    if requested <= 0.0 or total <= 0.0:
+        return 0.0, 0.0
+    scale = min(1.0, total / requested)
+    return fade_in * scale, fade_out * scale
+
+
 def render_video(
     image_paths: list[str | Path],
     scene_audio_durations: list[float],
@@ -233,6 +249,8 @@ def render_video(
     transitions: list[RenderTransition] | None = None,
     music_path: str | Path | None = None,
     music_volume: float = 0.12,
+    music_fade_in_seconds: float | None = None,
+    music_fade_out_seconds: float | None = None,
     caption_font: str = DEFAULT_CAPTION_FONT,
     caption_font_size: int | None = None,
     caption_height_percent: float | None = None,
@@ -462,11 +480,36 @@ def render_video(
         video_label = "vcap"
 
     if has_music:
-        graph.append(
-            f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[a_voice];"
-            f"[{music_input_index}:a]aresample=48000,volume={music_volume:.3f},apad=pad_dur=2[a_music];"
-            "[a_voice][a_music]amix=inputs=2:duration=first:dropout_transition=2[aout]"
-        )
+        output_duration = sum(scene_durations) + hold
+        if music_fade_in_seconds is not None or music_fade_out_seconds is not None:
+            fade_in, fade_out = bounded_music_fades(
+                output_duration,
+                music_fade_in_seconds or 0.0,
+                music_fade_out_seconds or 0.0,
+            )
+            fade_filters = []
+            if fade_in > 0.0:
+                fade_filters.append(f"afade=t=in:st=0:d={fade_in:.4f}")
+            if fade_out > 0.0:
+                fade_filters.append(
+                    f"afade=t=out:st={max(0.0, output_duration - fade_out):.4f}:d={fade_out:.4f}"
+                )
+            fade_chain = ",".join(fade_filters)
+            if fade_chain:
+                fade_chain += ","
+            graph.append(
+                f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[a_voice];"
+                f"[{music_input_index}:a]aresample=48000,atrim=duration={output_duration:.4f},"
+                f"asetpts=PTS-STARTPTS,volume={music_volume:.6f},{fade_chain}apad=pad_dur=2[a_music];"
+                "[a_voice][a_music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+                "alimiter=limit=0.95:level=false[aout]"
+            )
+        else:
+            graph.append(
+                f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[a_voice];"
+                f"[{music_input_index}:a]aresample=48000,volume={music_volume:.3f},apad=pad_dur=2[a_music];"
+                "[a_voice][a_music]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            )
     else:
         graph.append(f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[aout]")
 

@@ -12,6 +12,31 @@ Confirme que:
 
 O app mostra a quantidade e os nomes encontrados antes de liberar a geração.
 
+## Catálogo de música ausente ou inválido
+
+Confirme que a biblioteca versionada existe no projeto:
+
+```text
+assets/music_library/catalog.json
+assets/music_library/faixas/...
+```
+
+Reconstrua a imagem com `docker compose up --build -d` para copiá-la para `/workspace/assets/music_library/`. Se `input/music_library/` existir, ele substitui a biblioteca embutida; remova ou corrija esse override quando estiver incompleto. `MUSIC_LIBRARY_DIR` deve apontar para a biblioteca da imagem.
+
+O carregador rejeita versão diferente de 1, IDs ou caminhos duplicados, caminho absoluto, `..`, extensão diferente de MP3, arquivo ausente, tamanho excessivo e symlink que escape de `faixas/`. Não mova apenas o JSON sem os MP3s correspondentes.
+
+## Faixa não selecionável, volume divergente ou SHA-256 incorreto
+
+Somente faixas com `selection_status: editorial_candidate` podem entrar no Short. Itens em `revisar_*` permanecem disponíveis para conferência, mas são bloqueados. O `volume_percent` do JSON deve coincidir com `recommended_volume_percent`, salvo zero para silêncio explícito; reduções temporárias são feitas na interface. Se o SHA-256 divergir, restaure o MP3 correto em vez de editar o hash para aceitar outro áudio.
+
+## Narração silenciosa ou medição LUFS inválida
+
+Faixas catalogadas exigem uma medição válida da voz após o TTS. Se o WAV estiver silencioso, corrompido ou o FFmpeg não retornar intensidade integrada, a geração para antes da mixagem. Confira os WAVs em `output/<execução>/audio/` e teste novamente sem música para isolar o TTS. O ganho nunca sobe acima da recomendação e pode ficar bem menor quando a voz estiver baixa.
+
+## Aviso de licença não verificada
+
+O catálogo descreve faixas locais, mas não comprova origem, licença ou atribuição. `unverified` significa que a música pode ser usada apenas para revisão local até você confirmar os direitos. O app não cria crédito fictício e não publica o Short.
+
 ## Imagem ausente ou nome divergente
 
 `image_path` é resolvido por basename, sem caminho. `cena_01.png` não corresponde a `cena-01.png`, a uma pasta adicional ou a outro nome. Corrija o JSON ou renomeie o membro do ZIP.

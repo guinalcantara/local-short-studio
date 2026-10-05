@@ -18,6 +18,16 @@ O formato legado, sem `shots`, continua usando `image_path` e `motion` como seu 
 
 Veja os dois contratos em `examples/modelo_projeto.json` e `examples/modelo_projeto_multiplos_planos.json`.
 
+### Trilha única opcional
+
+Para selecionar uma faixa local para o Short inteiro, acrescente:
+
+```json
+"soundtrack": { "track_id": "acting_melodiesinfonie", "volume_percent": 4 }
+```
+
+O ID deve existir no catálogo embutido `assets/music_library/catalog.json`, estar marcado como `editorial_candidate` e usar exatamente o volume recomendado; zero é aceito como silêncio explícito. `track_id` aceita apenas letras minúsculas, números e sublinhado; não aceita caminhos. `volume_percent` é inteiro de 0 a 12. Não use `soundtrack` junto com `music_path`.
+
 ### Transição para a próxima cena
 
 Em qualquer cena que não seja a última, `transition_to_next` pode escolher:
@@ -43,6 +53,8 @@ docker compose up --build -d
 ```
 
 Abra `http://localhost:8501`. O serviço padrão é somente o app; ele não depende do ComfyUI nem de checkpoint de Stable Diffusion.
+
+O catálogo já faz parte do projeto e da imagem Docker em `/workspace/assets/music_library/`; não há etapa de instalação. Para testar outra biblioteca sem reconstruir a imagem, crie `input/music_library/` com `catalog.json` e `faixas/`. Quando esse override local existe, ele tem precedência sobre a biblioteca embutida.
 
 ## 3. Enviar e validar
 
@@ -72,7 +84,13 @@ O seletor **Voz da narração** oferece somente vozes Kokoro pt-BR:
 
 A voz válida do JSON é selecionada inicialmente; um código inválido volta para Dora. Todas as cenas usam a escolha atual. A velocidade aceita valores de 0.75 a 1.25.
 
-Música é opcional e deve ter licença de uso. Legendas são opcionais: quando ligadas, o vídeo recebe burn-in com Montserrat ExtraBold em maiúsculas, contorno escuro, até três palavras por bloco, entrada em pop e destaque progressivo por palavra. Os controles **Tamanho da fonte da legenda** e **Altura da legenda na tela** são aplicados apenas à geração atual. Na altura, 0% representa a base, 50% o centro e valores maiores movem o texto para cima. Os arquivos `.srt` e `.ass` também são salvos junto para inspeção.
+Música é opcional. A interface permite desativá-la, aceitar a faixa do JSON, escolher outro candidato editorial ou enviar um arquivo manual. A opção efetiva é exibida e segue esta precedência: upload selecionado, escolha do catálogo, faixa do JSON, `music_path` legado e sem música. Para uma faixa catalogada, o volume começa na recomendação e só pode ser mantido ou reduzido. A seleção temporária não reescreve `project.json`.
+
+Título, categoria, uso estimado, duração e estado de licença aparecem antes da geração. `license_status: unverified`, URL ausente ou atribuição ausente não comprovam direito de uso; confirme tudo antes de publicar. A renderização local continua disponível para revisão.
+
+Depois da narração, o app mede a voz e pode reduzir a faixa para preservar ao menos vinte LU de distância e um teto aproximado de −38 LUFS durante a fala. A música entra em cerca de 0,5 segundo, sai em cerca de 0,8 segundo e termina junto com o vídeo. Upload manual e `music_path` usam o comportamento legado de volume estático.
+
+Legendas são opcionais: quando ligadas, o vídeo recebe burn-in com Montserrat ExtraBold em maiúsculas, contorno escuro, até três palavras por bloco, entrada em pop e destaque progressivo por palavra. Os controles **Tamanho da fonte da legenda** e **Altura da legenda na tela** são aplicados apenas à geração atual. Na altura, 0% representa a base, 50% o centro e valores maiores movem o texto para cima. Os arquivos `.srt` e `.ass` também são salvos junto para inspeção.
 
 ### Chatterbox PT-BR
 
@@ -88,7 +106,7 @@ O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execuçã
 
 A duração visual do fade é arredondada para frames. Se uma duração explicitamente informada ocupar quase todo o primeiro plano da cena seguinte, a geração para com uma mensagem da fronteira problemática. Em projetos legados, o app pode encurtar a dissolvência implícita ou usar corte seco para preservar o plano.
 
-O arquivo `project.json` preserva o bloco `youtube`, se existir. Esse bloco é somente preparação para uma tarefa futura; esta versão não publica nada.
+O arquivo `project.json` preserva os blocos `soundtrack` e `youtube`, se existirem. A escolha de música realmente usada fica em `soundtrack_used.json`, com ganho, LUFS e metadados disponíveis, sem caminho do host. O bloco YouTube continua sendo apenas preparação para uma tarefa futura; esta versão não publica nada.
 
 ## 6. Limites configuráveis
 
@@ -98,7 +116,9 @@ Os limites do ZIP ficam em `.env` ou `config/settings.example.env`:
 - `ZIP_MAX_COMPRESSED_BYTES`;
 - `ZIP_MAX_UNCOMPRESSED_BYTES`;
 - `ZIP_MAX_IMAGE_BYTES`;
-- `ZIP_MAX_IMAGE_PIXELS`.
+- `ZIP_MAX_IMAGE_PIXELS`;
+- `MUSIC_MAX_CATALOG_BYTES`;
+- `MUSIC_MAX_TRACK_BYTES`.
 
 ## 7. Serviço legado opcional
 
