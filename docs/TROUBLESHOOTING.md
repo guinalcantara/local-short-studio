@@ -120,9 +120,11 @@ O comando padrão não precisa construir ou iniciar ComfyUI. Portas padrão: `85
 docker compose up --build -d app
 ```
 
-## Publicação futura
+## Não consigo conectar ou publicar no YouTube
 
-O bloco `youtube` é apenas metadado validado e preservado. Nenhuma credencial, OAuth, upload, legenda via API ou agendamento é executado nesta versão.
+Confirme que `input/youtube/client_secret.json` existe e contém um cliente OAuth do tipo **Aplicativo para computador**, que a YouTube Data API v3 está habilitada no projeto Google Cloud e que a porta `8765` está livre e publicada pelo Docker. Se a porta foi alterada, use o mesmo valor em `YOUTUBE_OAUTH_PORT` e recrie o app.
+
+O seletor começa vazio por segurança. Conecte a conta, conclua o login no navegador, clique em **Atualizar após concluir o login**, selecione o canal e confirme a publicação. Chave de API não autoriza upload: é necessário OAuth. Se o token expirar, conecte a conta novamente. Para remover o token deste computador, use **Remover conexão local desta conta**; para revogar também no Google, use as conexões de terceiros da Conta Google.
 ## Whisper não carrega ou a barra fica na sincronização
 
 Quando as legendas estão ativas ou o projeto usa `shots`, o Whisper é executado depois da geração do áudio para obter timestamps por palavra. Na primeira execução, o modelo `small` é baixado e pode levar alguns minutos; depois ele é reutilizado a partir de `models/kokoro/`.

@@ -106,9 +106,17 @@ O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execuçã
 
 A duração visual do fade é arredondada para frames. Se uma duração explicitamente informada ocupar quase todo o primeiro plano da cena seguinte, a geração para com uma mensagem da fronteira problemática. Em projetos legados, o app pode encurtar a dissolvência implícita ou usar corte seco para preservar o plano.
 
-O arquivo `project.json` preserva os blocos `soundtrack` e `youtube`, se existirem. A escolha de música realmente usada fica em `soundtrack_used.json`, com ganho, LUFS e metadados disponíveis, sem caminho do host. O bloco YouTube continua sendo apenas preparação para uma tarefa futura; esta versão não publica nada.
+O arquivo `project.json` preserva os blocos `soundtrack` e `youtube`, se existirem. A escolha de música realmente usada fica em `soundtrack_used.json`, com ganho, LUFS e metadados disponíveis, sem caminho do host. Quando um MP4 é publicado, `youtube_publication.json` registra o ID, URL, canal, horário e hash do vídeo, sem credenciais.
 
-## 6. Limites configuráveis
+## 6. Publicar no YouTube
+
+Depois que o MP4 aparecer, a seção **Publicar no YouTube** permite conectá-lo e enviá-lo. Primeiro siga [`YOUTUBE_AUTHENTICATION.md`](YOUTUBE_AUTHENTICATION.md) para salvar o JSON do cliente OAuth em `input/youtube/client_secret.json` e conectar cada conta desejada.
+
+O seletor **Conta para publicar** começa vazio e não escolhe canal automaticamente. Selecione uma conta conectada, revise título, descrição, privacidade, público infantil e mídia sintética, marque a confirmação e clique em **Publicar MP4 no YouTube**. O app envia somente o MP4, mostra o progresso e salva `youtube_publication.json` com o link retornado. O mesmo arquivo não pode ser enviado novamente por engano.
+
+O YouTube pode continuar processando o vídeo depois do upload. Legendas SRT/VTT, agendamento, miniatura e publicação em lote ainda não são enviados pela API.
+
+## 7. Limites configuráveis
 
 Os limites do ZIP ficam em `.env` ou `config/settings.example.env`:
 
@@ -120,7 +128,7 @@ Os limites do ZIP ficam em `.env` ou `config/settings.example.env`:
 - `MUSIC_MAX_CATALOG_BYTES`;
 - `MUSIC_MAX_TRACK_BYTES`.
 
-## 7. Serviço legado opcional
+## 8. Serviço legado opcional
 
 ComfyUI/Stable Diffusion não participa da operação normal. Se for necessário investigá-lo em uma tarefa futura, ele está no perfil `legacy-image`:
 

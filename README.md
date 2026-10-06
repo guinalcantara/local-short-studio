@@ -50,7 +50,7 @@ Em uma cena com `shots`, o primeiro plano repete exatamente `scene.image_path` e
 
 Cada cena, exceto a última, pode declarar `transition_to_next` com `cut`, `crossfade` ou `fade_black`. A duração opcional de fades aceita de 0,15 a 0,45 segundo; quando omitida, usa o padrão do perfil. Projetos antigos continuam usando a dissolvência padrão. As transições afetam somente o vídeo: narração, padding entre cenas, âncoras dos planos e legendas mantêm seus tempos originais.
 
-O bloco opcional `youtube` é apenas metadado preparado para uma integração futura. Ele é validado e preservado no `project.json`, mas não há OAuth, upload, agendamento ou chamada à API nesta versão.
+O bloco opcional `youtube` contém os metadados usados na publicação direta. Depois de renderizar o MP4, a interface permite escolher explicitamente uma conta conectada, revisar os dados e confirmar um upload resumível pela YouTube Data API. Não há conta padrão, agendamento, publicação em lote ou upload de legendas pela API nesta versão.
 
 O plano da futura publicação direta está em [`docs/YOUTUBE_PUBLICATION_PLAN.md`](docs/YOUTUBE_PUBLICATION_PLAN.md). Para preparar uma conta localmente quando a integração for implementada, veja [`docs/YOUTUBE_AUTHENTICATION.md`](docs/YOUTUBE_AUTHENTICATION.md): upload exige OAuth 2.0, não uma chave de API.
 

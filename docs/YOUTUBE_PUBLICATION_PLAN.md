@@ -1,6 +1,6 @@
 # Plano de atualização: publicação direta no YouTube
 
-**Estado:** planejamento aprovado para a branch `youtube-publication-plan`. Nenhum upload, OAuth ou chamada à API foi implementado nesta etapa.
+**Estado:** OAuth local por conta, seletor de conta vazio por padrão e upload resumível foram implementados na branch `youtube-publication-plan`. Agendamento, lote e legendas pela API continuam fora do escopo.
 
 ## Objetivo
 
@@ -45,14 +45,19 @@ URL/ID retornado, estado de processamento e registro local da publicação
 5. Antes de enviar, apresentar uma confirmação que mostre canal, título, privacidade e os campos de público infantil e mídia sintética. A confirmação é por publicação; não há envio em segundo plano.
 6. Após o envio, mostrar o link do vídeo e o estado de processamento. Falhas devem preservar o MP4 e explicar se o upload não foi iniciado, foi interrompido ou foi aceito e ainda está processando.
 
-## Implementação em etapas futuras
+## Implementação realizada
 
-1. **Dependências e configuração segura:** adicionar as bibliotecas oficiais de cliente/OAuth, local ignorado pelo Git para credencial do cliente e tokens, e portas de callback explicitamente documentadas para Docker local.
-2. **Contas OAuth:** implementar conexão, renovação, listagem de canais da credencial e remoção local/revogação orientada. Usar o escopo mínimo `youtube.upload`; pedir escopos adicionais somente quando uma função futura os exigir.
-3. **Camada de publicação:** mapear o JSON para `snippet` e `status` do `videos.insert`, usar upload retomável, validar limites antes da chamada e registrar ID/URL/horário/conta sem registrar tokens.
-4. **Interface e confirmações:** implementar o seletor vazio, a revisão explícita e mensagens de progresso/erro acessíveis no Streamlit.
-5. **Legendas e processamento:** em uma entrega separada, decidir se o `.srt` local será convertido para VTT e enviado pela API. Isso não bloqueia o primeiro upload do MP4.
-6. **Testes:** cobrir o mapeamento de metadados, ausência de conta, token expirado, cancelamento, erros recuperáveis do Google, reenvio seguro e garantia de que segredos não entram em `output/` ou logs.
+1. **Dependências e configuração segura:** bibliotecas oficiais de cliente/OAuth, `input/youtube/` ignorado pelo Git e callback Docker local na porta `8765` (configurável por `YOUTUBE_OAUTH_PORT`).
+2. **Contas OAuth:** conexão pelo navegador, identificação de canal, renovação de token, listagem de contas e remoção do token local. O escopo adicional `youtube.readonly` serve somente para identificar o canal na lista; `youtube.upload` autoriza o envio.
+3. **Camada de publicação:** mapeamento do JSON para `snippet` e `status` do `videos.insert`, upload resumível, progresso e registro local de ID/URL/horário/hash sem tokens.
+4. **Interface e confirmações:** seletor inicialmente vazio, revisão de metadados, confirmação obrigatória, aviso sobre processamento e bloqueio contra reenvio do mesmo MP4.
+5. **Testes:** cobertura para mapeamento de metadados, armazenamento local de conta, remoção de token, upload resumível e proteção contra duplicidade.
+
+## Próximas etapas opcionais
+
+- converter o `.srt` local para VTT e enviar legendas pela API;
+- consultar o estado de processamento depois do upload;
+- avaliar agendamento, thumbnails e publicação em lote somente após revisar o escopo e as políticas da API.
 
 ## Decisões de escopo
 

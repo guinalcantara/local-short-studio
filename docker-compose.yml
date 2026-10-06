@@ -33,6 +33,7 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:${APP_PORT:-8501}:8501"
+      - "127.0.0.1:${YOUTUBE_OAUTH_PORT:-8765}:${YOUTUBE_OAUTH_PORT:-8765}"
     volumes:
       - ./input:/workspace/input
       - ./output:/workspace/output
@@ -57,6 +58,9 @@ services:
       MUSIC_LIBRARY_DIR: ${MUSIC_LIBRARY_DIR:-/workspace/assets/music_library}
       MUSIC_MAX_CATALOG_BYTES: ${MUSIC_MAX_CATALOG_BYTES:-5242880}
       MUSIC_MAX_TRACK_BYTES: ${MUSIC_MAX_TRACK_BYTES:-104857600}
+      YOUTUBE_DATA_DIR: ${YOUTUBE_DATA_DIR:-/workspace/input/youtube}
+      YOUTUBE_CLIENT_SECRET_PATH: ${YOUTUBE_CLIENT_SECRET_PATH:-/workspace/input/youtube/client_secret.json}
+      YOUTUBE_OAUTH_PORT: ${YOUTUBE_OAUTH_PORT:-8765}
       CAPTION_FONT: Montserrat
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,video

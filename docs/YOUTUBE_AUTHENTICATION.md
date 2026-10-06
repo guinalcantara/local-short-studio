@@ -1,6 +1,6 @@
 # Autenticação do YouTube para publicação futura
 
-Este documento prepara o acesso à conta que publicará os vídeos quando a integração for implementada. A versão atual do Local Short Studio **não faz login nem publica vídeos**.
+Este documento explica como conectar localmente a conta que publicará os vídeos. O Local Short Studio abre o fluxo OAuth no navegador, armazena o token somente em `input/youtube/` e pede confirmação antes de cada upload.
 
 ## Chave de API não publica vídeos
 
@@ -13,16 +13,17 @@ Uma chave de API identifica o projeto e atende requisições públicas, mas não
 3. Em **APIs e serviços > Biblioteca**, habilite a [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com).
 4. Em **APIs e serviços > Tela de consentimento OAuth**, configure a tela, os dados de contato e os usuários de teste enquanto o projeto estiver em desenvolvimento.
 5. Em **APIs e serviços > Credenciais**, crie um ID de cliente OAuth do tipo **Aplicativo para computador**. Baixe o JSON de credenciais somente para uso local.
-6. Quando a futura interface solicitar, conecte uma conta: ela abrirá o navegador para login e consentimento. Repita o processo para cada canal/conta que puder ser selecionado na aplicação.
+6. Crie `input/youtube/` e salve o arquivo baixado como `input/youtube/client_secret.json`. Esse diretório já é ignorado pelo Git.
+7. Inicie o app com Docker, abra a área **Publicar no YouTube** depois de gerar um MP4 e clique em **Conectar nova conta**. Conclua o login no navegador e repita para cada canal/conta que poderá ser selecionado.
 
 Não crie uma chave de API para essa finalidade e não informe senha do Google ao aplicativo. O OAuth mantém a senha fora do app e permite revogar o acesso depois.
 
 ## Segurança das credenciais
 
 - Não adicione o JSON do cliente OAuth, tokens de acesso, tokens de atualização, cookies ou chaves ao Git, a `examples/`, ao ZIP de imagens ou ao `project.json`.
-- Na implementação futura, esses arquivos deverão ficar em diretório local ignorado pelo Git (por exemplo, em `input/youtube/`) e com uma entrada separada por conta conectada.
+- O cliente OAuth, tokens e a lista de contas ficam em `input/youtube/`, com um token separado por conta conectada.
 - O seletor de conta deverá exibir somente um apelido e a identificação pública do canal; nunca token, e-mail completo ou segredo.
-- Revogue uma conexão em [Conta Google > Segurança > Conexões de terceiros](https://myaccount.google.com/connections) ou remova a credencial/token local pela futura tela de contas.
+- Use **Remover conexão local desta conta** para apagar o token deste computador. Para revogar o acesso no Google, use [Conta Google > Segurança > Conexões de terceiros](https://myaccount.google.com/connections).
 
 ## Restrições que precisam ser conhecidas
 

@@ -13,9 +13,164 @@ from app.music_catalog import MusicCatalog, MusicCatalogError, load_music_catalo
 from app.pipeline import ShortPipeline, project_image_paths
 from app.schemas import VideoProject, example_project
 from app.voices import KOKORO_VOICES, TTS_ENGINES, normalize_voice, tts_engine_label, voice_label
+from app.youtube import (
+    YouTubeAlreadyPublishedError,
+    YouTubeError,
+    is_oauth_configured,
+    list_youtube_accounts,
+    load_youtube_publication,
+    publish_to_youtube,
+    remove_youtube_account,
+    start_youtube_authorization,
+    youtube_authorization_status,
+)
 
 
 VIDEO_PREVIEW_WIDTH = 360
+
+
+def render_youtube_publication(video_path: Path, project: VideoProject) -> None:
+    st.subheader("Publicar no YouTube")
+    st.caption("A renderização permanece local. O upload só acontece após a confirmação abaixo.")
+    if project.youtube is None:
+        st.warning("Este projeto não possui o bloco youtube. Adicione os metadados antes de publicar.")
+        return
+
+    try:
+        accounts = list_youtube_accounts()
+    except YouTubeError as exc:
+        st.error(f"Não foi possível carregar as contas do YouTube: {exc}")
+        accounts = ()
+    accounts_by_id = {account.id: account for account in accounts}
+    account_options = [""] + [account.id for account in accounts]
+    selected_key = "youtube_selected_account_id"
+    if st.session_state.get(selected_key) not in account_options:
+        st.session_state[selected_key] = ""
+    selected_account_id = st.selectbox(
+        "Conta para publicar",
+        options=account_options,
+        index=0,
+        key=selected_key,
+        format_func=lambda account_id: (
+            "Selecione uma conta para publicar"
+            if not account_id
+            else accounts_by_id[account_id].display_name
+        ),
+        help="Nenhuma conta é selecionada automaticamente. Escolha o canal que receberá este MP4.",
+    )
+    selected_account = accounts_by_id.get(selected_account_id)
+
+    with st.expander("Conectar ou remover contas do YouTube", expanded=not accounts):
+        if not is_oauth_configured():
+            st.info(
+                "Para conectar uma conta, coloque o JSON do cliente OAuth em "
+                "`input/youtube/client_secret.json` e reconstrua/inicie o app."
+            )
+        else:
+            label = st.text_input(
+                "Apelido local da conta (opcional)",
+                placeholder="Ex.: Canal de ciência",
+                key="youtube_new_account_label",
+                help="Este apelido aparece apenas neste computador; o título do canal vem da conta autorizada.",
+            )
+            if st.button("Conectar nova conta", key="youtube_connect_account"):
+                try:
+                    authorization = start_youtube_authorization(label)
+                    st.session_state["youtube_authorization_state"] = authorization.state
+                    st.rerun()
+                except YouTubeError as exc:
+                    st.error(f"Não foi possível iniciar a conexão: {exc}")
+
+        authorization_state = st.session_state.get("youtube_authorization_state")
+        if authorization_state:
+            authorization = youtube_authorization_status(authorization_state)
+            if authorization is None:
+                st.session_state.pop("youtube_authorization_state", None)
+                st.warning("A solicitação de conexão expirou. Inicie uma nova conexão.")
+            elif authorization.status == "pending":
+                st.info("Conclua o login no navegador e depois atualize o estado desta página.")
+                st.link_button("Abrir autorização do Google", authorization.authorization_url)
+                if st.button("Atualizar após concluir o login", key="youtube_refresh_authorization"):
+                    st.rerun()
+            elif authorization.status == "complete" and authorization.account is not None:
+                st.session_state.pop("youtube_authorization_state", None)
+                st.success(f"Conta conectada: {authorization.account.display_name}")
+                st.rerun()
+            else:
+                st.session_state.pop("youtube_authorization_state", None)
+                st.error(authorization.error or "A conexão com o YouTube não foi concluída.")
+
+        if selected_account is not None:
+            if st.button("Remover conexão local desta conta", key="youtube_remove_account"):
+                try:
+                    remove_youtube_account(selected_account.id)
+                    st.session_state[selected_key] = ""
+                    st.success("A conexão local foi removida. Para revogar o acesso no Google, use a página de conexões da conta.")
+                    st.rerun()
+                except YouTubeError as exc:
+                    st.error(f"Não foi possível remover a conexão: {exc}")
+
+    try:
+        previous_publication = load_youtube_publication(video_path)
+    except YouTubeError as exc:
+        st.error(f"Não foi possível ler o registro de publicação: {exc}")
+        previous_publication = None
+    if previous_publication is not None:
+        st.success("Este MP4 já foi enviado ao YouTube.")
+        st.link_button("Abrir vídeo publicado", previous_publication.video_url)
+        return
+
+    with st.expander("Revisar metadados que serão enviados", expanded=False):
+        st.write(f"**Título:** {project.title}")
+        st.write(f"**Privacidade:** {project.youtube.status.privacy_status}")
+        st.write(f"**Categoria:** {project.youtube.category_id}")
+        st.write(f"**Descrição:** {project.youtube.description or '(vazia)'}")
+        st.write("**Tags:** " + (", ".join(project.youtube.tags) or "(nenhuma)"))
+        st.write(
+            "**Mídia sintética declarada:** "
+            + ("sim" if project.youtube.status.contains_synthetic_media else "não")
+        )
+        if project.youtube.captions.enabled:
+            st.info("O envio de legendas VTT/SRT pela API será adicionado em uma etapa posterior; este primeiro upload contém somente o MP4.")
+
+    if selected_account is not None:
+        st.info(f"Destino selecionado: **{selected_account.channel_title}**.")
+    confirmation = st.checkbox(
+        "Confirmo o canal, os metadados, os direitos de publicação e as declarações acima.",
+        value=False,
+        key=f"youtube_publish_confirmation_{video_path.parent.name}",
+    )
+    can_publish = selected_account is not None and confirmation
+    if st.button(
+        "Publicar MP4 no YouTube",
+        type="primary",
+        disabled=not can_publish,
+        key=f"youtube_publish_{video_path.parent.name}",
+        use_container_width=True,
+    ):
+        upload_progress = st.progress(0.0, text="Preparando publicação no YouTube…")
+
+        def update_upload_progress(message: str, fraction: float | None = None) -> None:
+            if fraction is None:
+                upload_progress.progress(0.0, text=message)
+            else:
+                upload_progress.progress(min(1.0, max(0.0, fraction)), text=message)
+
+        try:
+            with st.spinner("Enviando o MP4 para o YouTube…"):
+                publication = publish_to_youtube(
+                    project,
+                    video_path,
+                    selected_account.id,
+                    progress=update_upload_progress,
+                )
+            upload_progress.progress(1.0, text="Upload concluído")
+            st.success("Upload concluído. O YouTube pode continuar processando o vídeo antes de disponibilizá-lo.")
+            st.link_button("Abrir vídeo no YouTube", publication.video_url, type="primary")
+        except YouTubeAlreadyPublishedError as exc:
+            st.info(str(exc))
+        except YouTubeError as exc:
+            st.error(f"A publicação não foi concluída: {exc}")
 
 
 st.set_page_config(page_title="Local Short Studio", page_icon="🎬", layout="wide")
@@ -378,6 +533,8 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
             )
         status_text.success("Short finalizado.")
         progress_bar.progress(1.0, text="Pronto")
+        st.session_state["youtube_output_video_path"] = str(output_video)
+        st.session_state["youtube_output_project_json"] = project.to_json()
         st.video(str(output_video), width=VIDEO_PREVIEW_WIDTH)
         st.download_button(
             "Baixar MP4",
@@ -395,6 +552,24 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
     except Exception as exc:
         status_text.error("A geração parou. Veja a etapa indicada na mensagem abaixo.")
         st.exception(exc)
+
+stored_video_path = st.session_state.get("youtube_output_video_path")
+stored_project_json = st.session_state.get("youtube_output_project_json")
+if stored_video_path and stored_project_json:
+    stored_video = Path(stored_video_path)
+    try:
+        stored_project = VideoProject.from_json_text(stored_project_json)
+    except Exception:
+        st.session_state.pop("youtube_output_video_path", None)
+        st.session_state.pop("youtube_output_project_json", None)
+    else:
+        if stored_video.is_file():
+            st.divider()
+            render_youtube_publication(stored_video, stored_project)
+        else:
+            st.warning("O MP4 gerado nesta sessão não está mais disponível para publicação.")
+            st.session_state.pop("youtube_output_video_path", None)
+            st.session_state.pop("youtube_output_project_json", None)
 
 st.divider()
 st.markdown("**Fluxo local:** modelo JSON + ZIP → validação → voz pt-BR local → alinhamento quando necessário → FFmpeg → MP4 9:16")

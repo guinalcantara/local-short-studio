@@ -1,37 +1,88 @@
 {
-  "title": "Primeiro Short de Games",
+  "title": "Qual foi o maior dinossauro que já existiu?",
   "profile": "short_vertical",
   "voice": "pf_dora",
   "speech_speed": 1.0,
-  "visual_style": "cinematic digital illustration, blue and white palette, dramatic but mature tone, cohesive lighting",
+  "visual_style": "cinematic naturalistic digital illustration, mature visual tone, cohesive olive green and slate gray palette with amber golden light",
   "captions": {
     "enabled": false,
     "theme": "modern_blue"
   },
+  "soundtrack": {
+    "track_id": "dramatic_orchestral_jp_bianchini",
+    "volume_percent": 4
+  },
   "scenes": [
     {
       "id": "cena_01_gancho",
-      "narration": "Comece com uma frase curta que desperte curiosidade.",
-      "image_path": "cena_01_gancho.png",
-      "motion": "slow_push_in"
+      "narration": "O maior dinossauro já descoberto não era um predador. Era um gigante de pescoço longo, e o título ainda está em disputa.",
+      "image_path": "cena_01_plano_01.png",
+      "motion": "slow_pull_out",
+      "shots": [
+        { "image_path": "cena_01_plano_01.png" },
+        { "image_path": "cena_01_plano_02.png", "start_phrase": "Era um gigante", "motion": "slow_push_in" }
+      ],
+      "transition_to_next": { "type": "cut" }
     },
     {
-      "id": "cena_02_contexto",
-      "narration": "Explique rapidamente o contexto ou a ideia principal.",
-      "image_path": "cena_02_contexto.png",
-      "motion": "pan_left"
+      "id": "cena_02_argentinossauro",
+      "narration": "Um dos principais candidatos é o argentinossauro, encontrado na Argentina. Algumas estimativas apontam cerca de trinta e cinco metros e setenta toneladas.",
+      "image_path": "cena_02_plano_01.png",
+      "motion": "slow_pull_out",
+      "shots": [
+        { "image_path": "cena_02_plano_01.png" },
+        { "image_path": "cena_02_plano_02.png", "start_phrase": "Algumas estimativas apontam", "motion": "slow_push_in" }
+      ],
+      "transition_to_next": { "type": "crossfade" }
     },
     {
-      "id": "cena_03_fechamento",
-      "narration": "Feche com uma conclusão ou uma pergunta para quem está assistindo.",
-      "image_path": "cena_03_fechamento.png",
-      "motion": "slow_pull_out"
+      "id": "cena_03_herbivoro",
+      "narration": "Esse gigante se alimentava de plantas, não de carne. Ele tinha cabeça pequena, corpo enorme e quatro pernas que sustentavam todo aquele peso.",
+      "image_path": "cena_03_plano_01.png",
+      "motion": "slow_push_in",
+      "shots": [
+        { "image_path": "cena_03_plano_01.png" },
+        { "image_path": "cena_03_plano_02.png", "start_phrase": "corpo enorme e", "motion": "pan_down" }
+      ],
+      "transition_to_next": { "type": "cut" }
+    },
+    {
+      "id": "cena_04_evidencias",
+      "narration": "Mas existe um problema: encontramos apenas partes do esqueleto. Os cientistas precisam comparar esses ossos com parentes mais completos para estimar seu tamanho.",
+      "image_path": "cena_04_plano_01.png",
+      "motion": "pan_right",
+      "shots": [
+        { "image_path": "cena_04_plano_01.png" },
+        { "image_path": "cena_04_plano_02.png", "start_phrase": "Os cientistas precisam", "motion": "slow_push_in" }
+      ],
+      "transition_to_next": { "type": "cut" }
+    },
+    {
+      "id": "cena_05_patagotita",
+      "narration": "Outro candidato é o patagotitã, também argentino. Seus fósseis são mais completos, mas ser mais comprido não significa necessariamente ser mais pesado.",
+      "image_path": "cena_05_plano_01.png",
+      "motion": "pan_left",
+      "shots": [
+        { "image_path": "cena_05_plano_01.png" },
+        { "image_path": "cena_05_plano_02.png", "start_phrase": "mas ser mais", "motion": "slow_push_in" }
+      ],
+      "transition_to_next": { "type": "crossfade" }
+    },
+    {
+      "id": "cena_06_conclusao",
+      "narration": "Por isso, não existe um campeão indiscutível. O argentinossauro está entre os favoritos pelo peso, mas novos fósseis podem mudar essa história.",
+      "image_path": "cena_06_plano_01.png",
+      "motion": "slow_push_in",
+      "shots": [
+        { "image_path": "cena_06_plano_01.png" },
+        { "image_path": "cena_06_plano_02.png", "start_phrase": "mas novos fósseis", "motion": "slow_push_in" }
+      ]
     }
   ],
   "youtube": {
     "default_language": "pt-BR",
-    "description": "Descrição preparada para uma futura publicação.",
-    "tags": ["jogos", "shorts"],
+    "description": "Qual foi o maior dinossauro que já existiu? Conheça o Argentinosaurus e o Patagotitan e entenda por que comprimento, peso e fósseis incompletos dificultam a escolha de um campeão. As medidas apresentadas são estimativas científicas. Cenas e fósseis são reconstruções visuais geradas por inteligência artificial.\n\n#Dinossauros #Paleontologia #Argentinosaurus #Patagotitan",
+    "tags": ["dinossauros", "maior dinossauro", "Argentinosaurus", "argentinossauro", "Patagotitan", "patagotitã", "titanossauros", "paleontologia", "fósseis", "ciência", "pré-história"],
     "category_id": "27",
     "status": {
       "privacy_status": "private",
@@ -42,10 +93,6 @@
       "contains_synthetic_media": true
     },
     "notify_subscribers": true,
-    "captions": {
-      "enabled": true,
-      "language": "pt-BR",
-      "format": "vtt"
-    }
+    "captions": { "enabled": true, "language": "pt-BR", "format": "vtt" }
   }
 }
