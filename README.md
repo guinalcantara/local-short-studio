@@ -6,7 +6,7 @@ Gere Shorts verticais localmente a partir de um roteiro JSON e de um ZIP com uma
 
 ## Fluxo da primeira versão
 
-1. Prepare `modelo_projeto.json` no formato legado (uma imagem por cena) ou com 2 a 4 `shots` por cena.
+1. Prepare `modelo_projeto.json`; cenas podem usar uma imagem ou de 2 a 4 `shots`.
 2. Prepare `imagens_cenas.zip` com os arquivos referenciados em `image_path`.
 3. Abra o Streamlit, envie os dois arquivos e corrija qualquer aviso de nomes, formatos ou arquivos ausentes.
 4. Opcionalmente, declare uma única `soundtrack` do catálogo embutido para o Short inteiro.
@@ -44,13 +44,15 @@ O comando padrão constrói e inicia somente o app. Não exige checkpoint, Comfy
 
 ## Modelo JSON e ZIP
 
-Use [`examples/modelo_projeto.json`](examples/modelo_projeto.json) para o contrato legado ou [`examples/modelo_projeto_multiplos_planos.json`](examples/modelo_projeto_multiplos_planos.json) para múltiplos planos. `image_path` continua obrigatório e deve ser somente o nome do arquivo, sem pastas. O ZIP pode conter as imagens na raiz ou em uma única subpasta; o app resolve por basename, valida bytes e copia apenas as imagens usadas para a execução.
+Use [`examples/modelo_projeto.json`](examples/modelo_projeto.json), um roteiro real completo com múltiplos planos e metadados de YouTube. `image_path` continua obrigatório e deve ser somente o nome do arquivo, sem pastas. O ZIP pode conter as imagens na raiz ou em uma única subpasta; o app resolve por basename, valida bytes e copia apenas as imagens usadas para a execução.
 
 Em uma cena com `shots`, o primeiro plano repete exatamente `scene.image_path` e começa junto com a cena. Cada plano seguinte usa uma imagem distinta e uma `start_phrase` única da narração. A troca acontece no início dessa frase, usando timestamps de palavras realmente reconhecidas pelo Whisper; não há corte no áudio nem transição entre os planos da mesma cena.
 
 Cada cena, exceto a última, pode declarar `transition_to_next` com `cut`, `crossfade` ou `fade_black`. A duração opcional de fades aceita de 0,15 a 0,45 segundo; quando omitida, usa o padrão do perfil. Projetos antigos continuam usando a dissolvência padrão. As transições afetam somente o vídeo: narração, padding entre cenas, âncoras dos planos e legendas mantêm seus tempos originais.
 
 O bloco opcional `youtube` é apenas metadado preparado para uma integração futura. Ele é validado e preservado no `project.json`, mas não há OAuth, upload, agendamento ou chamada à API nesta versão.
+
+O plano da futura publicação direta está em [`docs/YOUTUBE_PUBLICATION_PLAN.md`](docs/YOUTUBE_PUBLICATION_PLAN.md). Para preparar uma conta localmente quando a integração for implementada, veja [`docs/YOUTUBE_AUTHENTICATION.md`](docs/YOUTUBE_AUTHENTICATION.md): upload exige OAuth 2.0, não uma chave de API.
 
 Uma trilha catalogada é opcional e vale para o Short inteiro:
 

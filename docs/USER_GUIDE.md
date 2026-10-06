@@ -16,7 +16,7 @@ O formato legado, sem `shots`, continua usando `image_path` e `motion` como seu 
 - as âncoras seguem a ordem da narração e não atravessam o fim de uma frase;
 - `shot.motion` é opcional; quando ausente, herda o `motion` da cena.
 
-Veja os dois contratos em `examples/modelo_projeto.json` e `examples/modelo_projeto_multiplos_planos.json`.
+Veja o roteiro real completo em `examples/modelo_projeto.json`.
 
 ### Trilha única opcional
 
