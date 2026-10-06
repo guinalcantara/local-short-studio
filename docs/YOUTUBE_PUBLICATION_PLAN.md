@@ -38,7 +38,7 @@ URL/ID retornado, estado de processamento e registro local da publicação
 
 ### Comportamento da interface
 
-1. Criar uma área **Publicar no YouTube** depois que o vídeo estiver pronto; ela não aparece como etapa obrigatória da renderização local.
+1. Exibir uma área **Publicar no YouTube** sempre que o app estiver aberto, para conectar e selecionar contas sem depender da renderização; a publicação permanece bloqueada até existir um MP4 válido.
 2. Exibir um `selectbox` com `""` como primeira opção e texto `Selecione uma conta para publicar`.
 3. Mostrar somente contas concluídas no OAuth, com nome escolhido localmente e título do canal obtido da API; oferecer **Conectar nova conta** e **Desconectar**.
 4. Manter **Publicar** desabilitado até existir MP4, `youtube` válido e uma conta selecionada.

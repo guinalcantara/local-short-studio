@@ -4,13 +4,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from app import youtube
 from app.schemas import VideoProject, example_project
 from app.youtube import (
     YouTubeAccount,
     YouTubeAlreadyPublishedError,
+    YouTubeAuthorization,
     _save_account,
+    cancel_youtube_authorization,
     list_youtube_accounts,
     load_youtube_publication,
+    pending_youtube_authorization,
     publish_to_youtube,
     remove_youtube_account,
     youtube_video_resource,
@@ -54,6 +58,18 @@ class FakeYouTubeService:
 
     def videos(self):
         return self.videos_resource
+
+
+class FakeCallbackServer:
+    def __init__(self):
+        self.shutdown_called = False
+        self.server_close_called = False
+
+    def shutdown(self):
+        self.shutdown_called = True
+
+    def server_close(self):
+        self.server_close_called = True
 
 
 def project_for_youtube() -> VideoProject:
@@ -108,6 +124,26 @@ class YouTubeTests(unittest.TestCase):
 
             self.assertEqual(list_youtube_accounts(), ())
             self.assertFalse(token_path.exists())
+
+    def test_pending_authorization_can_be_recovered_after_page_refresh_or_cancelled(self):
+        authorization = YouTubeAuthorization(
+            state="pending-state",
+            authorization_url="https://accounts.google.com/example",
+            requested_label="Canal de testes",
+            flow=None,
+        )
+        server = FakeCallbackServer()
+        with patch.object(youtube, "_PENDING_AUTHORIZATIONS", {authorization.state: authorization}), patch.object(
+            youtube, "_CALLBACK_SERVER", server
+        ):
+            self.assertIs(pending_youtube_authorization(), authorization)
+
+            cancel_youtube_authorization(authorization.state)
+
+            self.assertEqual(authorization.status, "cancelled")
+            self.assertIsNone(pending_youtube_authorization())
+            self.assertTrue(server.shutdown_called)
+            self.assertTrue(server.server_close_called)
 
     def test_upload_uses_resumable_request_and_prevents_duplicate_video(self):
         project = project_for_youtube()

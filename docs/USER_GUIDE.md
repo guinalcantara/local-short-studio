@@ -110,9 +110,9 @@ O arquivo `project.json` preserva os blocos `soundtrack` e `youtube`, se existir
 
 ## 6. Publicar no YouTube
 
-Depois que o MP4 aparecer, a seção **Publicar no YouTube** permite conectá-lo e enviá-lo. Primeiro siga [`YOUTUBE_AUTHENTICATION.md`](YOUTUBE_AUTHENTICATION.md) para salvar o JSON do cliente OAuth em `input/youtube/client_secret.json` e conectar cada conta desejada.
+A seção **Publicar no YouTube** fica disponível antes mesmo da geração para conectar e selecionar contas. Primeiro siga [`YOUTUBE_AUTHENTICATION.md`](YOUTUBE_AUTHENTICATION.md) para salvar o JSON do cliente OAuth em `input/youtube/client_secret.json` e conectar cada conta desejada. O upload só é liberado depois que um MP4 for gerado.
 
-O seletor **Conta para publicar** começa vazio e não escolhe canal automaticamente. Selecione uma conta conectada, revise título, descrição, privacidade, público infantil e mídia sintética, marque a confirmação e clique em **Publicar MP4 no YouTube**. O app envia somente o MP4, mostra o progresso e salva `youtube_publication.json` com o link retornado. O mesmo arquivo não pode ser enviado novamente por engano.
+O seletor **Conta para publicar** começa vazio e não escolhe canal automaticamente. Se uma conexão for interrompida, use **Cancelar autorização pendente** antes de iniciar outra. Selecione uma conta conectada, revise título, descrição, privacidade, público infantil e mídia sintética, marque a confirmação e clique em **Publicar MP4 no YouTube**. O app envia somente o MP4, mostra o progresso e salva `youtube_publication.json` com o link retornado. O mesmo arquivo não pode ser enviado novamente por engano.
 
 O YouTube pode continuar processando o vídeo depois do upload. Legendas SRT/VTT, agendamento, miniatura e publicação em lote ainda não são enviados pela API.
 

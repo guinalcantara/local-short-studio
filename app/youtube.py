@@ -396,6 +396,33 @@ def youtube_authorization_status(state: str) -> YouTubeAuthorization | None:
         return _PENDING_AUTHORIZATIONS.get(state)
 
 
+def pending_youtube_authorization() -> YouTubeAuthorization | None:
+    """Return the active browser authorization, even after a Streamlit page refresh."""
+    with _AUTH_LOCK:
+        pending = [
+            authorization
+            for authorization in _PENDING_AUTHORIZATIONS.values()
+            if authorization.status == "pending"
+        ]
+    return pending[-1] if pending else None
+
+
+def cancel_youtube_authorization(state: str) -> None:
+    """Cancel an unfinished local OAuth request and free its loopback callback port."""
+    global _CALLBACK_SERVER
+    with _AUTH_LOCK:
+        authorization = _PENDING_AUTHORIZATIONS.get(state)
+        if authorization is None or authorization.status != "pending":
+            raise YouTubeError("Não há uma autorização do YouTube pendente para cancelar.")
+        authorization.status = "cancelled"
+        authorization.error = "A autorização foi cancelada neste computador."
+        server = _CALLBACK_SERVER
+        _CALLBACK_SERVER = None
+    if server is not None:
+        server.shutdown()
+        server.server_close()
+
+
 def youtube_video_resource(project: VideoProject) -> dict[str, Any]:
     if project.youtube is None:
         raise YouTubeError("O projeto não possui o bloco youtube necessário para publicação.")

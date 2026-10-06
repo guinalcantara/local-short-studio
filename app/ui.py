@@ -16,9 +16,11 @@ from app.voices import KOKORO_VOICES, TTS_ENGINES, normalize_voice, tts_engine_l
 from app.youtube import (
     YouTubeAlreadyPublishedError,
     YouTubeError,
+    cancel_youtube_authorization,
     is_oauth_configured,
     list_youtube_accounts,
     load_youtube_publication,
+    pending_youtube_authorization,
     publish_to_youtube,
     remove_youtube_account,
     start_youtube_authorization,
@@ -29,12 +31,9 @@ from app.youtube import (
 VIDEO_PREVIEW_WIDTH = 360
 
 
-def render_youtube_publication(video_path: Path, project: VideoProject) -> None:
+def render_youtube_publication(video_path: Path | None, project: VideoProject | None) -> None:
     st.subheader("Publicar no YouTube")
-    st.caption("A renderização permanece local. O upload só acontece após a confirmação abaixo.")
-    if project.youtube is None:
-        st.warning("Este projeto não possui o bloco youtube. Adicione os metadados antes de publicar.")
-        return
+    st.caption("Você pode conectar e selecionar contas antes de gerar o vídeo. O upload só acontece após a confirmação abaixo.")
 
     try:
         accounts = list_youtube_accounts()
@@ -60,13 +59,45 @@ def render_youtube_publication(video_path: Path, project: VideoProject) -> None:
     )
     selected_account = accounts_by_id.get(selected_account_id)
 
+    authorization_state = st.session_state.get("youtube_authorization_state")
+    authorization = (
+        youtube_authorization_status(authorization_state)
+        if authorization_state
+        else None
+    )
+    if authorization is None:
+        authorization = pending_youtube_authorization()
+        if authorization is not None:
+            st.session_state["youtube_authorization_state"] = authorization.state
+
     with st.expander("Conectar ou remover contas do YouTube", expanded=not accounts):
+        if authorization is not None and authorization.status == "pending":
+            st.info("Há uma conexão do YouTube aguardando conclusão. Conclua o login ou cancele-a para iniciar outra.")
+            st.link_button("Abrir autorização do Google", authorization.authorization_url)
+            action_left, action_right = st.columns(2)
+            if action_left.button("Atualizar após concluir o login", key="youtube_refresh_authorization"):
+                st.rerun()
+            if action_right.button("Cancelar autorização pendente", key="youtube_cancel_authorization"):
+                try:
+                    cancel_youtube_authorization(authorization.state)
+                    st.session_state.pop("youtube_authorization_state", None)
+                    st.rerun()
+                except YouTubeError as exc:
+                    st.error(f"Não foi possível cancelar a autorização: {exc}")
+        elif authorization is not None and authorization.status == "complete" and authorization.account is not None:
+            st.session_state.pop("youtube_authorization_state", None)
+            st.success(f"Conta conectada: {authorization.account.display_name}")
+            st.rerun()
+        elif authorization is not None:
+            st.session_state.pop("youtube_authorization_state", None)
+            st.error(authorization.error or "A conexão com o YouTube não foi concluída.")
+
         if not is_oauth_configured():
             st.info(
                 "Para conectar uma conta, coloque o JSON do cliente OAuth em "
                 "`input/youtube/client_secret.json` e reconstrua/inicie o app."
             )
-        else:
+        elif authorization is None or authorization.status != "pending":
             label = st.text_input(
                 "Apelido local da conta (opcional)",
                 placeholder="Ex.: Canal de ciência",
@@ -81,25 +112,6 @@ def render_youtube_publication(video_path: Path, project: VideoProject) -> None:
                 except YouTubeError as exc:
                     st.error(f"Não foi possível iniciar a conexão: {exc}")
 
-        authorization_state = st.session_state.get("youtube_authorization_state")
-        if authorization_state:
-            authorization = youtube_authorization_status(authorization_state)
-            if authorization is None:
-                st.session_state.pop("youtube_authorization_state", None)
-                st.warning("A solicitação de conexão expirou. Inicie uma nova conexão.")
-            elif authorization.status == "pending":
-                st.info("Conclua o login no navegador e depois atualize o estado desta página.")
-                st.link_button("Abrir autorização do Google", authorization.authorization_url)
-                if st.button("Atualizar após concluir o login", key="youtube_refresh_authorization"):
-                    st.rerun()
-            elif authorization.status == "complete" and authorization.account is not None:
-                st.session_state.pop("youtube_authorization_state", None)
-                st.success(f"Conta conectada: {authorization.account.display_name}")
-                st.rerun()
-            else:
-                st.session_state.pop("youtube_authorization_state", None)
-                st.error(authorization.error or "A conexão com o YouTube não foi concluída.")
-
         if selected_account is not None:
             if st.button("Remover conexão local desta conta", key="youtube_remove_account"):
                 try:
@@ -109,6 +121,16 @@ def render_youtube_publication(video_path: Path, project: VideoProject) -> None:
                     st.rerun()
                 except YouTubeError as exc:
                     st.error(f"Não foi possível remover a conexão: {exc}")
+
+    if project is None:
+        st.info("Envie um projeto JSON válido para revisar os metadados e habilitar a publicação depois da geração.")
+        return
+    if project.youtube is None:
+        st.warning("Este projeto não possui o bloco youtube. Adicione os metadados antes de publicar.")
+        return
+    if video_path is None:
+        st.info("Conexões e seleção de conta já estão disponíveis. Gere um Short para liberar a revisão e o botão de publicação.")
+        return
 
     try:
         previous_publication = load_youtube_publication(video_path)
@@ -555,6 +577,8 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
 
 stored_video_path = st.session_state.get("youtube_output_video_path")
 stored_project_json = st.session_state.get("youtube_output_project_json")
+stored_video: Path | None = None
+stored_project: VideoProject | None = None
 if stored_video_path and stored_project_json:
     stored_video = Path(stored_video_path)
     try:
@@ -562,14 +586,18 @@ if stored_video_path and stored_project_json:
     except Exception:
         st.session_state.pop("youtube_output_video_path", None)
         st.session_state.pop("youtube_output_project_json", None)
+        stored_video = None
     else:
         if stored_video.is_file():
-            st.divider()
-            render_youtube_publication(stored_video, stored_project)
+            pass
         else:
             st.warning("O MP4 gerado nesta sessão não está mais disponível para publicação.")
             st.session_state.pop("youtube_output_video_path", None)
             st.session_state.pop("youtube_output_project_json", None)
+            stored_video = None
+
+st.divider()
+render_youtube_publication(stored_video, stored_project or parsed)
 
 st.divider()
 st.markdown("**Fluxo local:** modelo JSON + ZIP → validação → voz pt-BR local → alinhamento quando necessário → FFmpeg → MP4 9:16")

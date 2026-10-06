@@ -14,7 +14,7 @@ Uma chave de API identifica o projeto e atende requisições públicas, mas não
 4. Em **APIs e serviços > Tela de consentimento OAuth**, configure a tela, os dados de contato e os usuários de teste enquanto o projeto estiver em desenvolvimento.
 5. Em **APIs e serviços > Credenciais**, crie um ID de cliente OAuth do tipo **Aplicativo para computador**. Baixe o JSON de credenciais somente para uso local.
 6. Crie `input/youtube/` e salve o arquivo baixado como `input/youtube/client_secret.json`. Esse diretório já é ignorado pelo Git.
-7. Inicie o app com Docker, abra a área **Publicar no YouTube** depois de gerar um MP4 e clique em **Conectar nova conta**. Conclua o login no navegador e repita para cada canal/conta que poderá ser selecionado.
+7. Inicie o app com Docker, abra a área **Publicar no YouTube** e clique em **Conectar nova conta**. A área fica disponível antes de gerar um MP4; conclua o login no navegador e repita para cada canal/conta que poderá ser selecionado. Se fechar ou interromper o login, use **Cancelar autorização pendente** antes de iniciar outra.
 
 Não crie uma chave de API para essa finalidade e não informe senha do Google ao aplicativo. O OAuth mantém a senha fora do app e permite revogar o acesso depois.
 

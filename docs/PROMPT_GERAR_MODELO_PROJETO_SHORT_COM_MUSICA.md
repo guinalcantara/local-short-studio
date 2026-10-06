@@ -24,7 +24,8 @@ Crie um YouTube Short em português brasileiro sobre o tema informado. O usuári
 - Cada plano corresponde a uma imagem **real e distinta**, gerada separadamente. Não entregue somente prompts, não reutilize imagens e não faça colagens, grades ou folhas de contato. Não planeje ComfyUI ou Stable Diffusion no fluxo padrão.
 - O primeiro plano de cada cena começa no início da fala e **não tem** `start_phrase`. Cada plano seguinte tem `start_phrase`: uma sequência curta e exata de palavras presente **uma única vez** na `narration` da própria cena. Copie o trecho literalmente do texto falado. A sequência deve estar dentro de uma frase, não atravessar duas. Não use segundos estimados.
 - `start_phrase` indica o instante da **primeira palavra** em que a imagem deve mudar. Palavras posteriores servem apenas para tornar a âncora única e não atrasam o corte até o fim do trecho. Escolha sempre as primeiras palavras da ideia em que o novo plano deve começar.
-- Use de **2 a 4 palavras** por `start_phrase`. Prefira palavras comuns, curtas e fáceis de reconhecer na fala. Não prolongue uma âncora apenas para dar contexto: quanto mais palavras ela tiver, maior será a possibilidade de uma divergência na transcrição do Whisper.
+- Use **2 ou 3 palavras** por `start_phrase` como padrão; use 4 somente quando for indispensável torná-la única. Prefira palavras comuns, curtas e fáceis de reconhecer na fala. Não prolongue uma âncora apenas para dar contexto: quanto mais palavras ela tiver, maior será a possibilidade de uma divergência na transcrição do Whisper.
+- Nunca comece `start_phrase` com artigo, contração, preposição ou conector que o Whisper possa omitir, como `o`, `os`, `a`, `as`, `um`, `uma`, `no`, `na`, `mas`, `e` ou `então`. Comece por uma palavra de conteúdo, de preferência verbo, substantivo ou adjetivo. Por exemplo, use `precisam comparar`, não `Os cientistas precisam`.
 - Evite incluir em `start_phrase` nomes científicos ou próprios, siglas, números, palavras estrangeiras, termos raros e palavras cuja pronúncia ou grafia possa ser ambígua. Esses termos podem continuar na `narration`; escolha palavras comuns próximas como âncora.
 - Escolha as frases âncora para que a imagem apareça junto da ideia narrada; evite um plano que antecipe a revelação antes da fala. Preserve a ordem dos planos e das frases âncora. Cada âncora precisa ser curta, contígua, literal e ocorrer uma única vez.
 - `image_path` no nível da cena continua obrigatório para compatibilidade e deve ser **idêntico** ao `image_path` de `shots[0]`. Em cenas novas, inclua `shots` com 2 a 4 elementos. `motion` no nível da cena continua no JSON; cada plano pode omitir `motion` para herdar o da cena ou escolher um movimento permitido.
@@ -137,7 +138,7 @@ Use os campos e tipos abaixo. O exemplo mostra somente duas cenas para explicar 
       "motion": "slow_push_in",
       "shots": [
         { "image_path": "cena_01_plano_01.png" },
-        { "image_path": "cena_01_plano_02.png", "start_phrase": "Mas os fósseis contam" }
+        { "image_path": "cena_01_plano_02.png", "start_phrase": "contam uma história" }
       ],
       "transition_to_next": { "type": "crossfade" }
     },
@@ -148,7 +149,7 @@ Use os campos e tipos abaixo. O exemplo mostra somente duas cenas para explicar 
       "motion": "slow_pull_out",
       "shots": [
         { "image_path": "cena_02_plano_01.png" },
-        { "image_path": "cena_02_plano_02.png", "start_phrase": "Eles poderiam ajudar" }
+        { "image_path": "cena_02_plano_02.png", "start_phrase": "ajudar a segurar" }
       ]
     }
   ],
@@ -180,7 +181,7 @@ Regras adicionais:
 
 ### Validação e entrega
 
-Antes de entregar, valide o JSON e conte as palavras faladas. Confirme que cada cena tem 2 a 4 planos, que `shots[0].image_path == scene.image_path`, que cada `start_phrase` tem de 2 a 4 palavras, ocorre exatamente uma vez na fala da cena, começa exatamente no ponto desejado para a troca e evita termos difíceis para reconhecimento de voz. Confirme também que as âncoras estão em ordem. Confira `transition_to_next` em todas as cenas menos a última, sem duração em `cut` e sem passagens pelo preto consecutivas. Confira correspondência exata, sem duplicatas, entre todos os arquivos referenciados nos planos e as imagens do ZIP; a referência duplicada entre `scene.image_path` e `shots[0].image_path` aponta para **um único arquivo**. Confirme que existe exatamente um `soundtrack.track_id` da tabela e que `volume_percent` coincide com seu volume indicado. Confira também o bloco `youtube` e a ausência de dados de agendamento ou credenciais.
+Antes de entregar, valide o JSON e conte as palavras faladas. Confirme que cada cena tem 2 a 4 planos, que `shots[0].image_path == scene.image_path`, que cada `start_phrase` tem preferencialmente 2 ou 3 palavras, ocorre exatamente uma vez na fala da cena, começa exatamente no ponto desejado para a troca, começa por palavra de conteúdo e evita artigos, conectores e termos difíceis para reconhecimento de voz. Confirme também que as âncoras estão em ordem. Confira `transition_to_next` em todas as cenas menos a última, sem duração em `cut` e sem passagens pelo preto consecutivas. Confira correspondência exata, sem duplicatas, entre todos os arquivos referenciados nos planos e as imagens do ZIP; a referência duplicada entre `scene.image_path` e `shots[0].image_path` aponta para **um único arquivo**. Confirme que existe exatamente um `soundtrack.track_id` da tabela e que `volume_percent` coincide com seu volume indicado. Confira também o bloco `youtube` e a ausência de dados de agendamento ou credenciais.
 
 Entregue links para `modelo_projeto.json` e `imagens_cenas.zip`, com prévias ou links individuais das imagens. Informe título, faixa selecionada, volume e duração estimada em uma linha, sem duplicar a narração.
 
