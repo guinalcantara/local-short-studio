@@ -8,6 +8,10 @@
     "enabled": false,
     "theme": "modern_blue"
   },
+  "soundtrack": {
+    "track_id": "dramatic_orchestral_jp_bianchini",
+    "volume_percent": 4
+  },
   "scenes": [
     {
       "id": "cena_01_gancho",

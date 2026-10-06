@@ -54,6 +54,9 @@ services:
       RENDER_PROFILES: /workspace/config/render_profiles.json
       INPUT_DIR: /workspace/input
       OUTPUT_DIR: /workspace/output
+      MUSIC_LIBRARY_DIR: ${MUSIC_LIBRARY_DIR:-/workspace/assets/music_library}
+      MUSIC_MAX_CATALOG_BYTES: ${MUSIC_MAX_CATALOG_BYTES:-5242880}
+      MUSIC_MAX_TRACK_BYTES: ${MUSIC_MAX_TRACK_BYTES:-104857600}
       CAPTION_FONT: Montserrat
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,video

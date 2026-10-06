@@ -1,0 +1,16 @@
+# Host-side folders are mounted into Docker Compose.
+APP_PORT=8501
+
+# Kokoro Brazilian Portuguese.
+TTS_DEVICE=cuda
+TTS_VOICE=pf_dora
+
+# `auto` selects NVENC when FFmpeg sees it; `libx264` is the compatibility option.
+VIDEO_ENCODER=auto
+
+# ZIP safety limits.
+ZIP_MAX_FILES=100
+ZIP_MAX_COMPRESSED_BYTES=262144000
+ZIP_MAX_UNCOMPRESSED_BYTES=1073741824
+ZIP_MAX_IMAGE_BYTES=52428800
+ZIP_MAX_IMAGE_PIXELS=40000000

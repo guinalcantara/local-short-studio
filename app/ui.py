@@ -9,6 +9,7 @@ import torch
 
 from app.captions import DEFAULT_CAPTION_FONT_SIZE, DEFAULT_CAPTION_HEIGHT_PERCENT
 from app.image_archive import ImageZipError, ImageZipValidation, validate_image_zip
+from app.music_catalog import MusicCatalog, MusicCatalogError, load_music_catalog
 from app.pipeline import ShortPipeline, project_image_paths
 from app.schemas import VideoProject, example_project
 from app.voices import KOKORO_VOICES, TTS_ENGINES, normalize_voice, tts_engine_label, voice_label
@@ -96,6 +97,14 @@ if parsed is not None:
     if transition_summaries:
         st.caption("Transições entre cenas: " + " · ".join(transition_summaries))
 
+input_root = Path(os.getenv("INPUT_DIR", "/workspace/input"))
+music_catalog: MusicCatalog | None = None
+music_catalog_error: str | None = None
+try:
+    music_catalog = load_music_catalog(input_root)
+except MusicCatalogError as exc:
+    music_catalog_error = str(exc)
+
 images_upload = st.file_uploader(
     "2. Importe as imagens das cenas (.zip)",
     type=["zip"],
@@ -182,17 +191,114 @@ else:
         "temperature": chatterbox_temperature,
     }
 
-music_upload = st.file_uploader("Música de fundo opcional (com direitos de uso)", type=["mp3", "wav", "m4a", "aac"])
+st.subheader("Trilha sonora")
+project_soundtrack_valid = True
+json_track = None
+if parsed is not None and parsed.soundtrack is not None:
+    if music_catalog is None:
+        st.error(music_catalog_error or "O catálogo local não pôde ser carregado.")
+        project_soundtrack_valid = False
+    else:
+        try:
+            json_track = music_catalog.get(parsed.soundtrack.track_id, verify_sha256=True)
+            if parsed.soundtrack.volume_percent not in {0, json_track.recommended_volume_percent}:
+                raise MusicCatalogError(
+                    f"O JSON pede {parsed.soundtrack.volume_percent}%, mas deve usar 0% para silêncio "
+                    f"explícito ou os {json_track.recommended_volume_percent}% recomendados para {json_track.id}."
+                )
+        except MusicCatalogError as exc:
+            st.error(f"Trilha do projeto inválida: {exc}")
+            project_soundtrack_valid = False
 
+music_source_options = ["none", "upload"]
+if music_catalog is not None and music_catalog.editorial_tracks():
+    music_source_options.insert(1, "catalog")
+if parsed is not None and parsed.music_path:
+    music_source_options.insert(0, "legacy")
+if parsed is not None and parsed.soundtrack is not None:
+    music_source_options.insert(0, "json")
+
+music_source_labels = {
+    "json": "Aceitar a faixa definida no JSON",
+    "catalog": "Escolher outra faixa do catálogo local",
+    "legacy": "Usar music_path legado do JSON",
+    "upload": "Enviar um arquivo manualmente",
+    "none": "Sem música nesta geração",
+}
+music_source = st.selectbox(
+    "Música efetiva nesta geração",
+    options=music_source_options,
+    format_func=lambda value: music_source_labels[value],
+    help=(
+        "Precedência aplicada: upload selecionado, faixa escolhida aqui, faixa do JSON, "
+        "music_path legado e, por fim, sem música. O project.json original não é reescrito."
+    ),
+)
+
+selected_catalog_track = json_track if music_source == "json" else None
+selected_catalog_track_id: str | None = None
+if music_source == "catalog" and music_catalog is not None:
+    editorial_tracks = music_catalog.editorial_tracks()
+    track_ids = [track.id for track in editorial_tracks]
+    preferred_id = json_track.id if json_track and json_track.id in track_ids else track_ids[0]
+    selected_catalog_track_id = st.selectbox(
+        "Faixa do catálogo",
+        options=track_ids,
+        index=track_ids.index(preferred_id),
+        format_func=lambda track_id: next(
+            f"{track.title} · {track.category} · {track.recommended_volume_percent}%"
+            for track in editorial_tracks if track.id == track_id
+        ),
+    )
+    selected_catalog_track = music_catalog.get(selected_catalog_track_id)
+
+if selected_catalog_track is not None:
+    artist = selected_catalog_track.artist_candidate or "autor não identificado"
+    st.info(
+        f"**{selected_catalog_track.title}** — {artist}  \n"
+        f"Categoria: `{selected_catalog_track.category}` · "
+        f"Uso estimado: {selected_catalog_track.best_for_estimate or 'não informado'} · "
+        f"Duração: {selected_catalog_track.duration_seconds:.1f}s · "
+        f"Volume recomendado: {selected_catalog_track.recommended_volume_percent}% · "
+        f"Licença: `{selected_catalog_track.license_status}`"
+    )
+    if selected_catalog_track.license_status == "unverified":
+        st.warning(
+            "Licença, origem e atribuição não foram comprovadas. A renderização local serve para revisão; "
+            "confirme os direitos antes de publicar."
+        )
+    else:
+        st.caption(f"Estado de licença informado no catálogo: {selected_catalog_track.license_status}")
+
+music_upload = None
+if music_source == "upload":
+    music_upload = st.file_uploader(
+        "Música de fundo manual (com direitos de uso)",
+        type=["mp3", "wav", "m4a", "aac"],
+    )
+
+catalog_volume = selected_catalog_track is not None
+recommended_volume = (
+    selected_catalog_track.recommended_volume_percent if selected_catalog_track else 12
+)
+initial_music_volume = (
+    parsed.soundtrack.volume_percent
+    if music_source == "json" and parsed is not None and parsed.soundtrack is not None
+    else recommended_volume
+)
 music_volume_percent = st.slider(
     "Volume da música",
     min_value=0,
-    max_value=100,
-    value=12,
+    max_value=max(1, recommended_volume) if catalog_volume else 100,
+    value=initial_music_volume,
     step=1,
     format="%d%%",
-    disabled=music_upload is None,
-    help="Controla apenas a música de fundo; a narração permanece no volume normal.",
+    disabled=(music_source == "none" or (music_source == "upload" and music_upload is None) or recommended_volume == 0),
+    key=f"music_volume_{music_source}_{selected_catalog_track.id if selected_catalog_track else 'manual'}",
+    help=(
+        "Para uma faixa catalogada, o controle permite apenas manter ou reduzir o teto recomendado; "
+        "o app ainda pode baixar o ganho depois de medir a voz. Upload e music_path mantêm o controle legado."
+    ),
 )
 
 zip_validation: ImageZipValidation | None = None
@@ -217,20 +323,28 @@ elif parsed is not None:
     except ImageZipError as exc:
         st.error(f"ZIP de imagens inválido: {exc}")
 
-can_generate = project_uploaded and parsed is not None and images_upload is not None and zip_validation is not None
+manual_music_ready = music_source != "upload" or music_upload is not None
+can_generate = (
+    project_uploaded
+    and parsed is not None
+    and images_upload is not None
+    and zip_validation is not None
+    and project_soundtrack_valid
+    and manual_music_ready
+)
 if st.button("Gerar Short", type="primary", disabled=not can_generate, use_container_width=True):
     project = VideoProject.from_json_text(project_text)
     project.captions.enabled = captions_enabled
     if tts_engine == "kokoro":
         project.voice = voice
         project.speech_speed = speech_speed
-    if music_upload is not None:
-        music_dir = Path(os.getenv("INPUT_DIR", "/workspace/input")) / "music"
+    manual_music_path = None
+    if music_source == "upload" and music_upload is not None:
+        music_dir = input_root / "music"
         music_dir.mkdir(parents=True, exist_ok=True)
         suffix = Path(music_upload.name).suffix.lower() or ".mp3"
-        music_path = music_dir / f"background{suffix}"
-        music_path.write_bytes(music_upload.getvalue())
-        project.music_path = str(music_path)
+        manual_music_path = music_dir / f"background{suffix}"
+        manual_music_path.write_bytes(music_upload.getvalue())
 
     progress_bar = st.progress(0.0, text="Preparando validação…")
     status_text = st.empty()
@@ -250,6 +364,10 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
                 chatterbox_settings=chatterbox_settings,
                 image_effects_enabled=image_effects_enabled,
                 music_volume=music_volume_percent / 100.0,
+                disable_music=music_source == "none",
+                manual_music_path=manual_music_path,
+                catalog_track_id=selected_catalog_track_id if music_source == "catalog" else None,
+                catalog_volume_percent=music_volume_percent if music_source in {"catalog", "json"} else None,
                 caption_font_size=caption_font_size,
                 caption_height_percent=caption_height_percent,
             ).run(

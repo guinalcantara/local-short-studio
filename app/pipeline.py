@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
+import json
 import os
 from pathlib import Path
 import re
@@ -16,6 +18,14 @@ from app.captions import (
     CaptionWord,
 )
 from app.image_archive import ImageZipValidation, validate_image_zip
+from app.music_catalog import (
+    CatalogTrack,
+    MusicCatalog,
+    MusicCatalogError,
+    calculate_catalog_gain,
+    load_music_catalog,
+    measure_integrated_lufs,
+)
 from app.renderer import RenderScene, RenderShot, RenderTransition, load_profiles, render_video
 from app.schemas import VideoProject
 from app.tts import KokoroTTS, SAMPLE_RATE
@@ -26,6 +36,133 @@ from app.whisper_alignment import WhisperAligner, anchor_start_time
 
 VOICE_REFERENCE_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg"}
 VOICE_REFERENCE_MAX_BYTES = 25 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class ResolvedMusicSelection:
+    path: Path
+    source: str
+    requested_volume_percent: float
+    report_path: str
+    track: CatalogTrack | None = None
+
+
+def _report_music_path(path: Path, input_root: Path) -> str:
+    try:
+        return path.resolve().relative_to(input_root.resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def resolve_music_selection(
+    project: VideoProject,
+    input_root: str | Path,
+    *,
+    disable_music: bool = False,
+    manual_music_path: str | Path | None = None,
+    ui_catalog_track_id: str | None = None,
+    ui_catalog_volume_percent: int | None = None,
+    legacy_music_volume: float = 0.12,
+) -> ResolvedMusicSelection | None:
+    """Resolve UI and project music with explicit, testable precedence."""
+    root = Path(input_root)
+    catalog: MusicCatalog | None = None
+    project_track: CatalogTrack | None = None
+    if project.soundtrack is not None:
+        catalog = load_music_catalog(root)
+        project_track = catalog.get(project.soundtrack.track_id, verify_sha256=True)
+        if project.soundtrack.volume_percent not in {0, project_track.recommended_volume_percent}:
+            raise MusicCatalogError(
+                f"O volume_percent de {project_track.id!r} deve ser 0% para silêncio explícito "
+                f"ou coincidir com o catálogo: {project_track.recommended_volume_percent}%."
+            )
+
+    if disable_music:
+        return None
+
+    if manual_music_path is not None:
+        path = Path(manual_music_path)
+        if not path.is_absolute():
+            path = root / path
+        if not path.is_file():
+            raise FileNotFoundError(f"Arquivo de música manual não encontrado: {path}")
+        percent = min(100.0, max(0.0, float(legacy_music_volume) * 100.0))
+        return ResolvedMusicSelection(
+            path.resolve(), "ui_upload", percent, _report_music_path(path, root)
+        )
+
+    if ui_catalog_track_id is not None:
+        catalog = catalog or load_music_catalog(root)
+        track = catalog.get(ui_catalog_track_id, verify_sha256=True)
+        requested = (
+            track.recommended_volume_percent
+            if ui_catalog_volume_percent is None
+            else ui_catalog_volume_percent
+        )
+        if isinstance(requested, bool) or not isinstance(requested, int) or not 0 <= requested <= 12:
+            raise MusicCatalogError("O volume escolhido para a faixa catalogada deve ser inteiro entre 0% e 12%.")
+        return ResolvedMusicSelection(
+            track.path,
+            "ui_catalog",
+            float(requested),
+            f"music_library/{track.relative_path}",
+            track,
+        )
+
+    if project_track is not None:
+        assert project.soundtrack is not None
+        requested = (
+            project.soundtrack.volume_percent
+            if ui_catalog_volume_percent is None
+            else ui_catalog_volume_percent
+        )
+        if isinstance(requested, bool) or not isinstance(requested, int) or not 0 <= requested <= 12:
+            raise MusicCatalogError("O volume escolhido para a faixa catalogada deve ser inteiro entre 0% e 12%.")
+        return ResolvedMusicSelection(
+            project_track.path,
+            "json_soundtrack",
+            float(requested),
+            f"music_library/{project_track.relative_path}",
+            project_track,
+        )
+
+    if project.music_path:
+        path = Path(project.music_path)
+        if not path.is_absolute():
+            path = root / path
+        if not path.is_file():
+            raise FileNotFoundError(f"Arquivo de música não encontrado: {path}")
+        percent = min(100.0, max(0.0, float(legacy_music_volume) * 100.0))
+        return ResolvedMusicSelection(
+            path.resolve(), "legacy_music_path", percent, _report_music_path(path, root)
+        )
+    return None
+
+
+def _soundtrack_report(
+    selection: ResolvedMusicSelection,
+    *,
+    effective_gain: float,
+    voice_lufs: float | None,
+) -> dict[str, object]:
+    track = selection.track
+    return {
+        "version": 1,
+        "source": selection.source,
+        "track_id": track.id if track else None,
+        "title": track.title if track else selection.path.name,
+        "artist_candidate": track.artist_candidate if track else None,
+        "path": selection.report_path,
+        "requested_volume_percent": selection.requested_volume_percent,
+        "effective_gain_linear": effective_gain,
+        "effective_volume_percent": effective_gain * 100.0,
+        "voice_measured_lufs": voice_lufs,
+        "music_catalog_lufs": track.measured_lufs if track else None,
+        "license_status": track.license_status if track else "not_provided",
+        "license_url": track.license_url if track else None,
+        "source_url": track.source_url if track else None,
+        "attribution_text": track.attribution_text if track else None,
+    }
 
 
 def slugify(value: str) -> str:
@@ -189,6 +326,10 @@ class ShortPipeline:
         chatterbox_settings: dict[str, float] | None = None,
         image_effects_enabled: bool = True,
         music_volume: float = 0.12,
+        disable_music: bool = False,
+        manual_music_path: str | Path | None = None,
+        catalog_track_id: str | None = None,
+        catalog_volume_percent: int | None = None,
         caption_font_size: int | None = None,
         caption_height_percent: float | None = None,
     ):
@@ -197,14 +338,16 @@ class ShortPipeline:
         self.output_root = Path(os.getenv("OUTPUT_DIR", "/workspace/output"))
         self.input_root = Path(os.getenv("INPUT_DIR", "/workspace/input"))
         self.tts_engine = normalize_tts_engine(tts_engine)
+        self.chatterbox_settings = chatterbox_settings or {}
         self.image_effects_enabled = bool(image_effects_enabled)
         self.music_volume = min(1.0, max(0.0, float(music_volume)))
+        self.disable_music = bool(disable_music)
+        self.manual_music_path = manual_music_path
+        self.catalog_track_id = catalog_track_id
+        self.catalog_volume_percent = catalog_volume_percent
         self.caption_font_size = caption_font_size
         self.caption_height_percent = caption_height_percent
-        if self.tts_engine == "kokoro":
-            self.tts = KokoroTTS()
-        else:
-            self.tts = ChatterboxPTBRTTS(**(chatterbox_settings or {}))
+        self.tts = None
 
     def run(
         self,
@@ -233,6 +376,21 @@ class ShortPipeline:
             0.14,
         )
 
+        self.progress("Validando a seleção de música…", 0.15)
+        music_selection = resolve_music_selection(
+            project,
+            self.input_root,
+            disable_music=self.disable_music,
+            manual_music_path=self.manual_music_path,
+            ui_catalog_track_id=self.catalog_track_id,
+            ui_catalog_volume_percent=self.catalog_volume_percent,
+            legacy_music_volume=self.music_volume,
+        )
+        if self.tts_engine == "kokoro":
+            self.tts = KokoroTTS()
+        else:
+            self.tts = ChatterboxPTBRTTS(**self.chatterbox_settings)
+
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         project_dir = self.output_root / f"{slugify(project.title)}_{run_id}"
         image_dir = project_dir / "images"
@@ -247,6 +405,7 @@ class ShortPipeline:
             if self.tts_engine != "chatterbox_ptbr":
                 raise ValueError("O audio de referencia so pode ser usado com Chatterbox PT-BR.")
             reference_path = _write_voice_reference(voice_reference, voice_reference_name, audio_dir)
+            assert self.tts is not None
             self.tts.set_reference_audio(reference_path)
 
         copied_images: list[list[Path]] = []
@@ -266,6 +425,7 @@ class ShortPipeline:
             copied_images.append(scene_images)
         image_paths = [images[0] for images in copied_images]
 
+        assert self.tts is not None
         if getattr(self.tts, "device", "cuda") == "cuda" and not torch.cuda.is_available():
             if self.tts_engine != "kokoro":
                 raise RuntimeError(
@@ -282,6 +442,20 @@ class ShortPipeline:
         narration_path, scene_cues, scene_durations = _build_voice_track(
             self.tts, project, audio_dir, padding_seconds, self.progress
         )
+        voice_lufs: float | None = None
+        effective_music_gain = self.music_volume
+        if music_selection is not None and music_selection.track is not None:
+            self.progress("Medindo a intensidade da narração para ajustar a trilha…", 0.75)
+            voice_lufs = measure_integrated_lufs(narration_path)
+            capped_percent = min(
+                music_selection.requested_volume_percent,
+                float(music_selection.track.recommended_volume_percent),
+            )
+            effective_music_gain = calculate_catalog_gain(
+                capped_percent,
+                voice_lufs,
+                music_selection.track.measured_lufs,
+            )
         cues = scene_cues
         observed_words: tuple[CaptionWord, ...] = ()
         has_multiple_shots = any(scene.shots is not None for scene in project.scenes)
@@ -317,15 +491,6 @@ class ShortPipeline:
         )
         self.progress(render_message, 0.86)
         video_path = project_dir / f"{slugify(project.title)}.mp4"
-        music_path = project.music_path
-        if music_path:
-            music_candidate = Path(music_path)
-            if not music_candidate.is_absolute():
-                music_candidate = self.input_root / music_candidate
-            if not music_candidate.exists():
-                raise FileNotFoundError(f"Arquivo de música não encontrado: {music_candidate}")
-            music_path = str(music_candidate)
-
         output_video = render_video(
             image_paths,
             scene_durations,
@@ -338,12 +503,24 @@ class ShortPipeline:
             transitions=project_transitions(project, float(profile["transition_seconds"])),
             image_effects_enabled=self.image_effects_enabled,
             captions_enabled=project.captions.enabled,
-            music_path=music_path,
-            music_volume=self.music_volume,
+            music_path=music_selection.path if music_selection else None,
+            music_volume=effective_music_gain,
+            music_fade_in_seconds=0.5 if music_selection and music_selection.track else None,
+            music_fade_out_seconds=0.8 if music_selection and music_selection.track else None,
             caption_font=os.getenv("CAPTION_FONT", DEFAULT_CAPTION_FONT),
             caption_font_size=self.caption_font_size,
             caption_height_percent=self.caption_height_percent,
             progress=self.progress,
         )
+        if music_selection is not None:
+            report = _soundtrack_report(
+                music_selection,
+                effective_gain=effective_music_gain,
+                voice_lufs=voice_lufs,
+            )
+            (project_dir / "soundtrack_used.json").write_text(
+                json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
         self.progress("Short renderizado.", 1.0)
         return output_video

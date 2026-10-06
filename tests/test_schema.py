@@ -36,6 +36,28 @@ class ProjectTests(unittest.TestCase):
             }
         )
         self.assertIsNone(project.youtube)
+        self.assertIsNone(project.soundtrack)
+
+    def test_soundtrack_is_strict_and_conflicts_with_legacy_music_path(self):
+        data = example_project().model_dump()
+        data["soundtrack"] = {"track_id": "acting_melodiesinfonie", "volume_percent": 4}
+        parsed = VideoProject.model_validate(data)
+        self.assertEqual(parsed.soundtrack.track_id, "acting_melodiesinfonie")
+        self.assertEqual(parsed.soundtrack.volume_percent, 4)
+
+        invalid_soundtracks = [
+            {"track_id": "../faixa", "volume_percent": 4},
+            {"track_id": "FAIXA", "volume_percent": 4},
+            {"track_id": "faixa", "volume_percent": 13},
+            {"track_id": "faixa", "volume_percent": 4.0},
+            {"track_id": "faixa", "volume_percent": 4, "path": "faixa.mp3"},
+        ]
+        for soundtrack in invalid_soundtracks:
+            with self.subTest(soundtrack=soundtrack), self.assertRaises(ValueError):
+                VideoProject.model_validate({**data, "soundtrack": soundtrack})
+
+        with self.assertRaisesRegex(ValueError, "soundtrack e music_path"):
+            VideoProject.model_validate({**data, "music_path": "music/faixa.mp3"})
 
     def test_youtube_metadata_is_preserved_and_strict(self):
         data = example_project().model_dump()
