@@ -98,9 +98,9 @@ Crie um YouTube Short em português brasileiro sobre o tema informado. O usuári
 | `know_myself_patrick_patrikios` | Urbano/lo-fi — cultura pop, humor leve | 4% |
 | `mood_peyruis` | Urbano/lo-fi — explicação leve e urbana | 5% |
 
-### Metadados preparados para publicação futura
+### Metadados para publicação opcional
 
-Preencha o bloco opcional `youtube` no JSON. Ele apenas acompanha o projeto: o aplicativo ainda não usa OAuth, agenda ou API de publicação. Escreva roteiro, narração e metadados de publicação em português brasileiro; `visual_style` é a exceção técnica e fica em inglês, como no modelo atual.
+Preencha o bloco opcional `youtube` no JSON. Depois da renderização, o aplicativo pode publicar o MP4 e, quando solicitado, a faixa de legenda fechada usando OAuth local. Escreva roteiro, narração e metadados de publicação em português brasileiro; `visual_style` é a exceção técnica e fica em inglês, como no modelo atual.
 
 - `title`: título principal curto e específico em pt-BR.
 - `youtube.description`: descrição específica, com hashtags pertinentes e sem lista excessiva. `youtube.tags`: termos concisos sem `#` e sem duplicatas.
@@ -108,14 +108,14 @@ Preencha o bloco opcional `youtube` no JSON. Ele apenas acompanha o projeto: o a
 - `youtube.status.privacy_status`: `private` para revisão. `license`: `youtube`. `embeddable` e `public_stats_viewable`: `true`.
 - `self_declared_made_for_kids`: `true` somente para conteúdo especificamente direcionado a crianças. Dinossauros, por si sós, não determinam a opção.
 - `contains_synthetic_media`: avalie se cenas fotorrealistas geradas por IA parecem retratar uma situação real que não aconteceu. Ilustrações claramente não realistas não exigem `true` apenas por terem sido geradas por IA.
-- `notify_subscribers`: `true`. `youtube.captions`: preparo futuro em `pt-BR`, formato `vtt`. Não invente timestamps ou um VTT nesta etapa.
+- `notify_subscribers`: `true`. Para solicitar legenda fechada no YouTube, use `youtube.captions.enabled: true`, `language: "pt-BR"` e `format: "vtt"` ou `"srt"`. Nesse caso, `captions.enabled` também precisa ser `true`, pois é ele que gera o SRT com timestamps reais. Não invente timestamps nem um arquivo VTT no JSON.
 - Não inclua agendamento, `publishAt`, credenciais, tokens ou identificadores privados. Não afirme que o Short foi publicado.
 
 ### Legendas e arquivos
 
-- `captions.enabled`: `false` no JSON por padrão; o usuário pode ativar legendas visuais na interface. `captions.theme`: `modern_blue`.
+- `captions.enabled`: `false` no JSON por padrão; o usuário pode ativar legendas visuais na interface. Quando `youtube.captions.enabled` for `true`, defina também `captions.enabled: true` para gerar a faixa fechada. `captions.theme`: `modern_blue`.
 - Entregue exatamente dois arquivos: `modelo_projeto.json` (roteiro, metadados e ID da trilha) e `imagens_cenas.zip` (todas as imagens usadas, preferencialmente na raiz). A música é resolvida automaticamente pelo catálogo embutido no aplicativo; não inclua MP3 no ZIP de imagens.
-- As legendas VTT futuras do YouTube são independentes das legendas incorporadas no MP4. Não gere arquivo VTT separado.
+- A faixa fechada do YouTube é independente das legendas incorporadas no MP4. O aplicativo aproveita o SRT gerado localmente e o converte para VTT quando esse formato for solicitado; não gere arquivo VTT separado.
 
 ### Formato do JSON
 

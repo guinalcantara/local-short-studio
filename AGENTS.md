@@ -17,10 +17,10 @@ O app local gera narração em português brasileiro com Kokoro/CUDA, aplica mov
 - Nunca extraia caminhos do ZIP diretamente. Preserve as validações de tamanho, extensão, symlink, criptografia, `..`, caminhos absolutos e duplicidade.
 - Copie para a execução somente as imagens referenciadas pelas cenas e seus planos.
 - As vozes atuais são exclusivamente `pf_dora`, `pm_alex` e `pm_santa`.
-- O bloco opcional `youtube` é validado, preservado e mapeado para o upload opcional pelo YouTube Data API. Não há conta padrão, publicação automática, lote, agendamento, miniatura ou upload de legendas pela API.
+- O bloco opcional `youtube` é validado, preservado e mapeado para o upload opcional de MP4 e, quando solicitado, da faixa SRT/VTT gerada localmente pelo YouTube Data API. Não há conta padrão, publicação automática, lote, agendamento ou miniatura.
 - Publicações exigem uma conta OAuth conectada, selecionada explicitamente e confirmação do usuário para cada MP4. Chave de API não autoriza upload.
 - O cliente OAuth, tokens e a lista local de contas ficam exclusivamente em `input/youtube/`. Nunca registre, exponha, copie para `output/` ou versione `client_secret.json`, tokens, refresh tokens, cookies, e-mails completos ou outros segredos.
-- Preserve upload resumível, renovação de token, bloqueio contra reenvio do mesmo MP4 e a possibilidade de cancelar uma autorização OAuth pendente.
+- Preserve upload resumível do MP4, renovação de token, bloqueio contra reenvio, recuperação segura de legenda pendente e a possibilidade de cancelar uma autorização OAuth pendente. O envio de legendas exige o escopo OAuth `youtube.force-ssl`.
 - `video_landscape` existe como perfil futuro, mas permanece desativado.
 - Não inclua pesos de modelos, tokens, credenciais ou arquivos gerados no Git.
 
@@ -30,7 +30,7 @@ O app local gera narração em português brasileiro com Kokoro/CUDA, aplica mov
 - `app/image_archive.py`: validação e mapeamento seguro do ZIP.
 - `app/voices.py`: catálogo de vozes Kokoro pt-BR.
 - `app/ui.py`: upload JSON/ZIP, validação, controles de voz, música, legendas e publicação explícita no YouTube.
-- `app/youtube.py`: OAuth local, contas conectadas, upload resumível e registro não sensível da publicação.
+- `app/youtube.py`: OAuth local, contas conectadas, upload resumível do MP4, envio de faixa de legenda e registro não sensível da publicação.
 - `app/pipeline.py`: ZIP → Kokoro/Chatterbox → Whisper quando necessário → FFmpeg; não adicionar ComfyUI ao caminho padrão.
 - `app/renderer.py`: pan/zoom, cortes, dissolvências, passagem pelo preto, legendas e MP4.
 - `docker-compose.yml`: o serviço padrão é somente `app`; ComfyUI fica no perfil legado `legacy-image`.

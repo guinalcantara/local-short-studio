@@ -1,6 +1,6 @@
 # Plano de atualização: publicação direta no YouTube
 
-**Estado:** OAuth local por conta, seletor de conta vazio por padrão e upload resumível foram implementados na branch `youtube-publication-plan`. Agendamento, lote e legendas pela API continuam fora do escopo.
+**Estado:** OAuth local por conta, seletor de conta vazio por padrão, upload resumível do MP4 e envio opcional de faixa SRT/VTT foram implementados na branch `youtube-publication-plan`. Agendamento, lote e miniaturas continuam fora do escopo.
 
 ## Objetivo
 
@@ -16,7 +16,7 @@ O projeto já valida e preserva os campos necessários para a primeira publicaç
 - `youtube.description`, `tags`, `category_id` e `default_language`;
 - `youtube.status.privacy_status`, `license`, `embeddable`, `public_stats_viewable`, `self_declared_made_for_kids` e `contains_synthetic_media`;
 - `youtube.notify_subscribers`;
-- `youtube.captions`, hoje apenas como intenção de uma etapa posterior de envio de legendas.
+- `youtube.captions`, que controla o idioma e o formato da faixa fechada enviada depois do MP4.
 
 O exemplo único em `examples/modelo_projeto.json` passou a usar o roteiro real fornecido, incluindo esse bloco `youtube`. O antigo exemplo reduzido de múltiplos planos foi removido para não competir com ele.
 
@@ -32,6 +32,8 @@ revisão explícita de destino, título, privacidade e avisos
 OAuth da conta escolhida, se o token precisar ser renovado
         ↓
 videos.insert com snippet + status do bloco youtube
+        ↓
+captions.insert opcional usando o ID retornado e o SRT/VTT local
         ↓
 URL/ID retornado, estado de processamento e registro local da publicação
 ```
@@ -49,13 +51,12 @@ URL/ID retornado, estado de processamento e registro local da publicação
 
 1. **Dependências e configuração segura:** bibliotecas oficiais de cliente/OAuth, `input/youtube/` ignorado pelo Git e callback Docker local na porta `8765` (configurável por `YOUTUBE_OAUTH_PORT`).
 2. **Contas OAuth:** conexão pelo navegador, identificação de canal, renovação de token, listagem de contas e remoção do token local. O escopo adicional `youtube.readonly` serve somente para identificar o canal na lista; `youtube.upload` autoriza o envio.
-3. **Camada de publicação:** mapeamento do JSON para `snippet` e `status` do `videos.insert`, upload resumível, progresso e registro local de ID/URL/horário/hash sem tokens.
+3. **Camada de publicação:** mapeamento do JSON para `snippet` e `status` do `videos.insert`, upload resumível do MP4 e `captions.insert` opcional com SRT ou VTT local. O MP4 é registrado antes da legenda para evitar reenvio se a segunda etapa falhar; a tentativa posterior usa o mesmo ID de vídeo.
 4. **Interface e confirmações:** seletor inicialmente vazio, revisão de metadados, confirmação obrigatória, aviso sobre processamento e bloqueio contra reenvio do mesmo MP4.
-5. **Testes:** cobertura para mapeamento de metadados, armazenamento local de conta, remoção de token, upload resumível e proteção contra duplicidade.
+5. **Testes:** cobertura para mapeamento de metadados, armazenamento local de conta, remoção de token, upload resumível, conversão SRT→VTT, envio de legenda e proteção contra duplicidade.
 
 ## Próximas etapas opcionais
 
-- converter o `.srt` local para VTT e enviar legendas pela API;
 - consultar o estado de processamento depois do upload;
 - avaliar agendamento, thumbnails e publicação em lote somente após revisar o escopo e as políticas da API.
 
@@ -63,7 +64,7 @@ URL/ID retornado, estado de processamento e registro local da publicação
 
 - A primeira versão publica **um MP4 por ação explícita**, no canal OAuth selecionado.
 - O valor padrão de `privacy_status` no modelo continua `private`, adequado para revisão. Projetos de API não verificados podem ser forçados pelo YouTube a permanecer privados.
-- Agendamento, publicação em lote, troca automática de conta, thumbnails e upload de legendas ficam fora da primeira entrega.
+- Agendamento, publicação em lote, troca automática de conta e miniaturas ficam fora da entrega atual.
 - O `youtube` no JSON continua sem credenciais, IDs privados de conta, token ou `publishAt`.
 - Os controles locais de música não comprovam direitos autorais; a pessoa que publica continua responsável por licenças, conteúdo e declarações ao YouTube.
 

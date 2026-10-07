@@ -137,10 +137,20 @@ def render_youtube_publication(video_path: Path | None, project: VideoProject | 
     except YouTubeError as exc:
         st.error(f"Não foi possível ler o registro de publicação: {exc}")
         previous_publication = None
+    captions_requested = project.youtube.captions.enabled
+    caption_srt_path = video_path.with_suffix(".srt")
+    captions_ready = not captions_requested or caption_srt_path.is_file()
     if previous_publication is not None:
         st.success("Este MP4 já foi enviado ao YouTube.")
         st.link_button("Abrir vídeo publicado", previous_publication.video_url)
-        return
+        if not captions_requested or previous_publication.caption is not None:
+            if previous_publication.caption is not None:
+                st.success(
+                    "A faixa de legendas também foi enviada "
+                    f"em {previous_publication.caption.format.upper()} ({previous_publication.caption.language})."
+                )
+            return
+        st.warning("O MP4 já foi enviado, mas a faixa de legendas ainda está pendente. Você pode enviá-la abaixo.")
 
     with st.expander("Revisar metadados que serão enviados", expanded=False):
         st.write(f"**Título:** {project.title}")
@@ -152,8 +162,17 @@ def render_youtube_publication(video_path: Path | None, project: VideoProject | 
             "**Mídia sintética declarada:** "
             + ("sim" if project.youtube.status.contains_synthetic_media else "não")
         )
-        if project.youtube.captions.enabled:
-            st.info("O envio de legendas VTT/SRT pela API será adicionado em uma etapa posterior; este primeiro upload contém somente o MP4.")
+        if captions_requested:
+            st.write(
+                "**Legenda fechada:** "
+                f"{project.youtube.captions.format.upper()} em {project.youtube.captions.language}."
+            )
+            if captions_ready:
+                st.caption("A faixa será enviada depois que o YouTube aceitar o MP4. As legendas visuais já incorporadas no vídeo não são alteradas.")
+            else:
+                st.error("A publicação pede legenda, mas o SRT desta renderização não existe. Gere novamente com as legendas ativadas.")
+        else:
+            st.caption("Este projeto publicará apenas o MP4; não há faixa de legenda solicitada no bloco youtube.")
 
     if selected_account is not None:
         st.info(f"Destino selecionado: **{selected_account.channel_title}**.")
@@ -162,9 +181,15 @@ def render_youtube_publication(video_path: Path | None, project: VideoProject | 
         value=False,
         key=f"youtube_publish_confirmation_{video_path.parent.name}",
     )
-    can_publish = selected_account is not None and confirmation
+    can_publish = selected_account is not None and confirmation and captions_ready
+    if previous_publication is not None:
+        publish_label = "Enviar legenda ao vídeo já publicado"
+    elif captions_requested:
+        publish_label = "Publicar MP4 e legenda no YouTube"
+    else:
+        publish_label = "Publicar MP4 no YouTube"
     if st.button(
-        "Publicar MP4 no YouTube",
+        publish_label,
         type="primary",
         disabled=not can_publish,
         key=f"youtube_publish_{video_path.parent.name}",
@@ -179,7 +204,12 @@ def render_youtube_publication(video_path: Path | None, project: VideoProject | 
                 upload_progress.progress(min(1.0, max(0.0, fraction)), text=message)
 
         try:
-            with st.spinner("Enviando o MP4 para o YouTube…"):
+            spinner_text = (
+                "Enviando a faixa de legendas para o YouTube…"
+                if previous_publication is not None
+                else "Enviando o MP4 para o YouTube…"
+            )
+            with st.spinner(spinner_text):
                 publication = publish_to_youtube(
                     project,
                     video_path,
@@ -187,7 +217,10 @@ def render_youtube_publication(video_path: Path | None, project: VideoProject | 
                     progress=update_upload_progress,
                 )
             upload_progress.progress(1.0, text="Upload concluído")
-            st.success("Upload concluído. O YouTube pode continuar processando o vídeo antes de disponibilizá-lo.")
+            if publication.caption is not None:
+                st.success("MP4 e faixa de legendas enviados. O YouTube pode continuar processando os dois itens antes de disponibilizá-los.")
+            else:
+                st.success("Upload concluído. O YouTube pode continuar processando o vídeo antes de disponibilizá-lo.")
             st.link_button("Abrir vídeo no YouTube", publication.video_url, type="primary")
         except YouTubeAlreadyPublishedError as exc:
             st.info(str(exc))
@@ -305,6 +338,11 @@ captions_enabled = left.checkbox(
         "Desmarcado: não queima texto no vídeo."
     ),
 )
+if parsed is not None and parsed.youtube is not None and parsed.youtube.captions.enabled and not captions_enabled:
+    st.warning(
+        "O bloco youtube solicita uma faixa de legenda, mas as legendas locais estão desativadas. "
+        "Ative-as antes de gerar para produzir o SRT necessário à publicação."
+    )
 image_effects_enabled = st.checkbox(
     "Aplicar movimentos suaves nas imagens",
     value=True,

@@ -90,7 +90,7 @@ Título, categoria, uso estimado, duração e estado de licença aparecem antes 
 
 Depois da narração, o app mede a voz e pode reduzir a faixa para preservar ao menos vinte LU de distância e um teto aproximado de −38 LUFS durante a fala. A música entra em cerca de 0,5 segundo, sai em cerca de 0,8 segundo e termina junto com o vídeo. Upload manual e `music_path` usam o comportamento legado de volume estático.
 
-Legendas são opcionais: quando ligadas, o vídeo recebe burn-in com Montserrat ExtraBold em maiúsculas, contorno escuro, até três palavras por bloco, entrada em pop e destaque progressivo por palavra. Os controles **Tamanho da fonte da legenda** e **Altura da legenda na tela** são aplicados apenas à geração atual. Na altura, 0% representa a base, 50% o centro e valores maiores movem o texto para cima. Os arquivos `.srt` e `.ass` também são salvos junto para inspeção.
+Legendas são opcionais: quando ligadas, o vídeo recebe burn-in com Montserrat ExtraBold em maiúsculas, contorno escuro, até três palavras por bloco, entrada em pop e destaque progressivo por palavra. Os controles **Tamanho da fonte da legenda** e **Altura da legenda na tela** são aplicados apenas à geração atual. Na altura, 0% representa a base, 50% o centro e valores maiores movem o texto para cima. Os arquivos `.srt` e `.ass` também são salvos junto para inspeção. O SRT é a base da faixa fechada enviada ao YouTube quando o bloco `youtube.captions` estiver ativo; para `format: "vtt"`, o app gera o VTT a partir dele no momento da publicação.
 
 ### Chatterbox PT-BR
 
@@ -106,15 +106,15 @@ O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execuçã
 
 A duração visual do fade é arredondada para frames. Se uma duração explicitamente informada ocupar quase todo o primeiro plano da cena seguinte, a geração para com uma mensagem da fronteira problemática. Em projetos legados, o app pode encurtar a dissolvência implícita ou usar corte seco para preservar o plano.
 
-O arquivo `project.json` preserva os blocos `soundtrack` e `youtube`, se existirem. A escolha de música realmente usada fica em `soundtrack_used.json`, com ganho, LUFS e metadados disponíveis, sem caminho do host. Quando um MP4 é publicado, `youtube_publication.json` registra o ID, URL, canal, horário e hash do vídeo, sem credenciais.
+O arquivo `project.json` preserva os blocos `soundtrack` e `youtube`, se existirem. A escolha de música realmente usada fica em `soundtrack_used.json`, com ganho, LUFS e metadados disponíveis, sem caminho do host. Quando um MP4 é publicado, `youtube_publication.json` registra o ID, URL, canal, horário, hash do vídeo e, se houver, somente o ID, idioma, formato e hash da faixa de legenda — nunca credenciais.
 
 ## 6. Publicar no YouTube
 
 A seção **Publicar no YouTube** fica disponível antes mesmo da geração para conectar e selecionar contas. Primeiro siga [`YOUTUBE_AUTHENTICATION.md`](YOUTUBE_AUTHENTICATION.md) para salvar o JSON do cliente OAuth em `input/youtube/client_secret.json` e conectar cada conta desejada. O upload só é liberado depois que um MP4 for gerado.
 
-O seletor **Conta para publicar** começa vazio e não escolhe canal automaticamente. Se uma conexão for interrompida, use **Cancelar autorização pendente** antes de iniciar outra. Selecione uma conta conectada, revise título, descrição, privacidade, público infantil e mídia sintética, marque a confirmação e clique em **Publicar MP4 no YouTube**. O app envia somente o MP4, mostra o progresso e salva `youtube_publication.json` com o link retornado. O mesmo arquivo não pode ser enviado novamente por engano.
+O seletor **Conta para publicar** começa vazio e não escolhe canal automaticamente. Se uma conexão for interrompida, use **Cancelar autorização pendente** antes de iniciar outra. Selecione uma conta conectada, revise título, descrição, privacidade, público infantil e mídia sintética, marque a confirmação e clique em **Publicar MP4 e legenda no YouTube** quando `youtube.captions.enabled` estiver ativo. Nesse caso, a geração também precisa ter produzido o SRT: mantenha as legendas locais ativas ao renderizar. O app envia primeiro o MP4 e, depois que ele receber um ID, envia a faixa SRT ou VTT. Se a segunda etapa falhar, o MP4 fica registrado e a tela libera uma tentativa explícita somente da legenda, sem reenviar o vídeo.
 
-O YouTube pode continuar processando o vídeo depois do upload. Legendas SRT/VTT, agendamento, miniatura e publicação em lote ainda não são enviados pela API.
+O YouTube pode continuar processando o vídeo e a faixa de legendas depois do upload. Contas conectadas antes desta atualização precisam ser removidas e conectadas novamente para conceder o escopo adicional de legendas. Agendamento, miniatura e publicação em lote continuam fora do escopo.
 
 ## 7. Limites configuráveis
 

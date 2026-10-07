@@ -5,7 +5,7 @@
   "speech_speed": 1.0,
   "visual_style": "cinematic naturalistic digital illustration, mature visual tone, cohesive olive green and slate gray palette with amber golden light",
   "captions": {
-    "enabled": false,
+    "enabled": true,
     "theme": "modern_blue"
   },
   "soundtrack": {

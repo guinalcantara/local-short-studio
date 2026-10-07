@@ -25,9 +25,11 @@ from app.schemas import VideoProject
 
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 YOUTUBE_READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
-YOUTUBE_SCOPES = (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READONLY_SCOPE)
+YOUTUBE_CAPTIONS_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
+YOUTUBE_SCOPES = (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READONLY_SCOPE, YOUTUBE_CAPTIONS_SCOPE)
 _ACCOUNT_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _ACCOUNT_STORE_VERSION = 1
+_MAX_CAPTION_BYTES = 100 * 1024 * 1024
 _PENDING_AUTHORIZATIONS: dict[str, "YouTubeAuthorization"] = {}
 _AUTH_LOCK = RLock()
 _CALLBACK_SERVER: ThreadingHTTPServer | None = None
@@ -69,6 +71,15 @@ class YouTubeAuthorization:
 
 
 @dataclass(frozen=True)
+class YouTubeCaptionPublication:
+    caption_id: str
+    language: str
+    format: str
+    caption_sha256: str
+    uploaded_at: str
+
+
+@dataclass(frozen=True)
 class YouTubePublication:
     video_id: str
     video_url: str
@@ -76,6 +87,7 @@ class YouTubePublication:
     channel_id: str
     published_at: str
     video_sha256: str
+    caption: YouTubeCaptionPublication | None = None
 
 
 def youtube_data_dir() -> Path:
@@ -227,7 +239,7 @@ def _credentials_for_account(account: YouTubeAccount) -> Credentials:
         raise YouTubeError(f"O token local da conta '{account.label}' não pôde ser lido.") from exc
     if not credentials.has_scopes(YOUTUBE_SCOPES):
         raise YouTubeError(
-            f"A conta '{account.label}' precisa ser conectada novamente para conceder as permissões necessárias."
+            f"A conta '{account.label}' precisa ser conectada novamente para conceder também a permissão de legendas."
         )
     try:
         if credentials.expired and credentials.refresh_token:
@@ -446,12 +458,70 @@ def youtube_video_resource(project: VideoProject) -> dict[str, Any]:
     }
 
 
-def _video_sha256(video_path: Path) -> str:
+def _file_sha256(path: Path) -> str:
     digest = sha256()
-    with video_path.open("rb") as video_file:
-        for chunk in iter(lambda: video_file.read(1024 * 1024), b""):
+    with path.open("rb") as file_handle:
+        for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _video_sha256(video_path: Path) -> str:
+    return _file_sha256(video_path)
+
+
+def _srt_to_webvtt(source: Path, target: Path) -> None:
+    try:
+        content = source.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        raise YouTubeError("Não foi possível ler o arquivo SRT das legendas.") from exc
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        raise YouTubeError("O arquivo SRT das legendas está vazio.")
+
+    converted_blocks: list[str] = []
+    for block in re.split(r"\n{2,}", normalized):
+        lines = block.split("\n")
+        if lines and lines[0].strip().isdigit():
+            lines = lines[1:]
+        if not lines or "-->" not in lines[0]:
+            raise YouTubeError("O arquivo SRT das legendas não possui timestamps válidos.")
+        lines[0] = lines[0].replace(",", ".")
+        converted_blocks.append("\n".join(lines))
+
+    target.write_text("WEBVTT\n\n" + "\n\n".join(converted_blocks) + "\n", encoding="utf-8")
+
+
+def _caption_file_for_publication(project: VideoProject, video_path: Path) -> tuple[Path, str] | None:
+    if project.youtube is None or not project.youtube.captions.enabled:
+        return None
+
+    srt_path = video_path.with_suffix(".srt")
+    if not srt_path.is_file():
+        raise YouTubeError(
+            "O projeto pede uma faixa de legendas, mas o SRT desta renderização não foi encontrado. "
+            "Gere o Short novamente com as legendas ativadas."
+        )
+    try:
+        source_size = srt_path.stat().st_size
+    except OSError as exc:
+        raise YouTubeError("Não foi possível acessar o arquivo SRT das legendas.") from exc
+    if not 0 < source_size <= _MAX_CAPTION_BYTES:
+        raise YouTubeError("O arquivo SRT das legendas está vazio ou excede o limite de 100 MB do YouTube.")
+
+    caption_format = project.youtube.captions.format
+    if caption_format == "srt":
+        return srt_path, caption_format
+
+    vtt_path = video_path.with_suffix(".vtt")
+    _srt_to_webvtt(srt_path, vtt_path)
+    try:
+        vtt_size = vtt_path.stat().st_size
+    except OSError as exc:
+        raise YouTubeError("Não foi possível preparar o arquivo VTT das legendas.") from exc
+    if not 0 < vtt_size <= _MAX_CAPTION_BYTES:
+        raise YouTubeError("O arquivo VTT das legendas está vazio ou excede o limite de 100 MB do YouTube.")
+    return vtt_path, caption_format
 
 
 def publication_record_path(video_path: str | Path) -> Path:
@@ -466,6 +536,19 @@ def load_youtube_publication(video_path: str | Path) -> YouTubePublication | Non
     if not isinstance(data, dict):
         raise YouTubeError("O registro local de publicação do YouTube é inválido.")
     try:
+        caption_data = data.get("caption")
+        if caption_data is None:
+            caption = None
+        elif not isinstance(caption_data, dict):
+            raise ValueError("caption inválida")
+        else:
+            caption = YouTubeCaptionPublication(
+                caption_id=str(caption_data["caption_id"]),
+                language=str(caption_data["language"]),
+                format=str(caption_data["format"]),
+                caption_sha256=str(caption_data["caption_sha256"]),
+                uploaded_at=str(caption_data["uploaded_at"]),
+            )
         return YouTubePublication(
             video_id=str(data["video_id"]),
             video_url=str(data["video_url"]),
@@ -473,9 +556,51 @@ def load_youtube_publication(video_path: str | Path) -> YouTubePublication | Non
             channel_id=str(data["channel_id"]),
             published_at=str(data["published_at"]),
             video_sha256=str(data["video_sha256"]),
+            caption=caption,
         )
     except (KeyError, ValueError) as exc:
         raise YouTubeError("O registro local de publicação do YouTube é inválido.") from exc
+
+
+def _upload_caption(
+    service: Any,
+    project: VideoProject,
+    video_id: str,
+    caption_path: Path,
+    caption_format: str,
+    report_progress: Callable[[str, float | None], None],
+) -> YouTubeCaptionPublication:
+    if project.youtube is None:
+        raise YouTubeError("O projeto não possui o bloco youtube necessário para publicação.")
+    language = project.youtube.captions.language
+    report_progress("Enviando faixa de legendas para o YouTube…", 0.96)
+    request = service.captions().insert(
+        part="snippet",
+        body={
+            "snippet": {
+                "videoId": video_id,
+                "language": language,
+                "name": f"Legendas {caption_format.upper()} ({language})",
+                "isDraft": False,
+            }
+        },
+        media_body=MediaFileUpload(str(caption_path), mimetype="application/octet-stream"),
+    )
+    try:
+        response = request.execute()
+    except HttpError as exc:
+        detail = getattr(exc, "reason", None) or "A API do YouTube recusou a faixa de legendas."
+        raise YouTubeError(f"O MP4 foi enviado, mas a legenda não foi concluída: {detail}") from exc
+    caption_id = str(response.get("id", "")).strip() if response else ""
+    if not caption_id:
+        raise YouTubeError("O MP4 foi enviado, mas o YouTube não retornou o ID da faixa de legendas.")
+    return YouTubeCaptionPublication(
+        caption_id=caption_id,
+        language=language,
+        format=caption_format,
+        caption_sha256=_file_sha256(caption_path),
+        uploaded_at=datetime.now(UTC).isoformat(),
+    )
 
 
 def publish_to_youtube(
@@ -488,16 +613,47 @@ def publish_to_youtube(
     if not target.is_file() or target.suffix.lower() != ".mp4":
         raise YouTubeError("O MP4 renderizado não está disponível para publicação.")
     report_progress = progress or (lambda message, fraction=None: None)
+    caption_file = _caption_file_for_publication(project, target)
     video_digest = _video_sha256(target)
     existing = load_youtube_publication(target)
-    if existing is not None and existing.video_sha256 == video_digest:
-        raise YouTubeAlreadyPublishedError(
-            "Este MP4 já foi enviado ao YouTube. Consulte o link registrado ou gere um novo vídeo antes de publicar novamente."
-        )
     account = get_youtube_account(account_id)
     report_progress("Renovando a autorização da conta do YouTube…", 0.02)
     credentials = _credentials_for_account(account)
     service = _youtube_service(credentials)
+    if existing is not None and existing.video_sha256 == video_digest:
+        if existing.account_id != account.id:
+            raise YouTubeError("Este MP4 já está associado a outra conta do YouTube neste computador.")
+        if caption_file is None:
+            raise YouTubeAlreadyPublishedError(
+                "Este MP4 já foi enviado ao YouTube. Consulte o link registrado ou gere um novo vídeo antes de publicar novamente."
+            )
+        caption_path, caption_format = caption_file
+        caption_digest = _file_sha256(caption_path)
+        if existing.caption is not None and existing.caption.caption_sha256 == caption_digest:
+            raise YouTubeAlreadyPublishedError(
+                "Este MP4 e esta faixa de legendas já foram enviados ao YouTube."
+            )
+        caption = _upload_caption(
+            service,
+            project,
+            existing.video_id,
+            caption_path,
+            caption_format,
+            report_progress,
+        )
+        publication = YouTubePublication(
+            video_id=existing.video_id,
+            video_url=existing.video_url,
+            account_id=existing.account_id,
+            channel_id=existing.channel_id,
+            published_at=existing.published_at,
+            video_sha256=existing.video_sha256,
+            caption=caption,
+        )
+        _write_json(publication_record_path(target), asdict(publication))
+        report_progress("Legenda enviada; o YouTube pode continuar processando o vídeo.", 1.0)
+        return publication
+
     request = service.videos().insert(
         part="snippet,status",
         notifySubscribers=project.youtube.notify_subscribers if project.youtube else True,
@@ -530,5 +686,27 @@ def publish_to_youtube(
         video_sha256=video_digest,
     )
     _write_json(publication_record_path(target), asdict(publication))
-    report_progress("Upload concluído; o YouTube pode continuar processando o vídeo.", 1.0)
+    if caption_file is not None:
+        caption_path, caption_format = caption_file
+        caption = _upload_caption(
+            service,
+            project,
+            video_id,
+            caption_path,
+            caption_format,
+            report_progress,
+        )
+        publication = YouTubePublication(
+            video_id=publication.video_id,
+            video_url=publication.video_url,
+            account_id=publication.account_id,
+            channel_id=publication.channel_id,
+            published_at=publication.published_at,
+            video_sha256=publication.video_sha256,
+            caption=caption,
+        )
+        _write_json(publication_record_path(target), asdict(publication))
+        report_progress("MP4 e legenda enviados; o YouTube pode continuar processando o vídeo.", 1.0)
+    else:
+        report_progress("Upload concluído; o YouTube pode continuar processando o vídeo.", 1.0)
     return publication

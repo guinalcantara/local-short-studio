@@ -46,18 +46,40 @@ class FakeVideosResource:
     def __init__(self, request):
         self.request = request
         self.kwargs = None
+        self.insert_calls = 0
 
     def insert(self, **kwargs):
+        self.insert_calls += 1
         self.kwargs = kwargs
         return self.request
+
+
+class FakeCaptionRequest:
+    def execute(self):
+        return {"id": "caption-456"}
+
+
+class FakeCaptionsResource:
+    def __init__(self):
+        self.kwargs = None
+        self.insert_calls = 0
+
+    def insert(self, **kwargs):
+        self.insert_calls += 1
+        self.kwargs = kwargs
+        return FakeCaptionRequest()
 
 
 class FakeYouTubeService:
     def __init__(self, request):
         self.videos_resource = FakeVideosResource(request)
+        self.captions_resource = FakeCaptionsResource()
 
     def videos(self):
         return self.videos_resource
+
+    def captions(self):
+        return self.captions_resource
 
 
 class FakeCallbackServer:
@@ -159,6 +181,10 @@ class YouTubeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             video_path = Path(temp_dir) / "short.mp4"
             video_path.write_bytes(b"mp4-test-content")
+            video_path.with_suffix(".srt").write_text(
+                "1\n00:00:00,000 --> 00:00:01,000\nLEGENDA DE TESTE\n",
+                encoding="utf-8",
+            )
             with patch("app.youtube.get_youtube_account", return_value=account), patch(
                 "app.youtube._credentials_for_account", return_value=FakeCredentials()
             ), patch("app.youtube._youtube_service", return_value=service):
@@ -174,10 +200,53 @@ class YouTubeTests(unittest.TestCase):
                 self.assertFalse(service.videos_resource.kwargs["notifySubscribers"])
                 self.assertEqual(service.videos_resource.kwargs["body"]["snippet"]["title"], project.title)
                 self.assertTrue(any(fraction == 0.5 for _, fraction in progress))
+                self.assertIsNotNone(publication.caption)
+                self.assertEqual(publication.caption.caption_id, "caption-456")
+                self.assertEqual(publication.caption.format, "vtt")
+                self.assertEqual(service.captions_resource.kwargs["part"], "snippet")
+                self.assertEqual(service.captions_resource.kwargs["body"]["snippet"]["videoId"], "video-123")
+                self.assertEqual(service.captions_resource.kwargs["body"]["snippet"]["language"], "pt-BR")
+                vtt_path = video_path.with_suffix(".vtt")
+                self.assertTrue(vtt_path.is_file())
+                self.assertTrue(vtt_path.read_text(encoding="utf-8").startswith("WEBVTT\n\n"))
                 self.assertEqual(load_youtube_publication(video_path), publication)
 
                 with self.assertRaises(YouTubeAlreadyPublishedError):
                     publish_to_youtube(project, video_path, account.id)
+                self.assertEqual(service.videos_resource.insert_calls, 1)
+                self.assertEqual(service.captions_resource.insert_calls, 1)
+
+    def test_pending_caption_can_be_sent_without_reuploading_the_mp4(self):
+        project = project_for_youtube()
+        project.youtube.captions.enabled = False
+        account = YouTubeAccount(
+            id="c" * 32,
+            label="Canal de publicação",
+            channel_id="UC789",
+            channel_title="Canal de publicação oficial",
+        )
+        service = FakeYouTubeService(FakeUploadRequest())
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = Path(temp_dir) / "short.mp4"
+            video_path.write_bytes(b"mp4-test-content")
+            with patch("app.youtube.get_youtube_account", return_value=account), patch(
+                "app.youtube._credentials_for_account", return_value=FakeCredentials()
+            ), patch("app.youtube._youtube_service", return_value=service):
+                initial_publication = publish_to_youtube(project, video_path, account.id)
+
+                project.youtube.captions.enabled = True
+                project.youtube.captions.format = "srt"
+                video_path.with_suffix(".srt").write_text(
+                    "1\n00:00:00,000 --> 00:00:01,000\nLEGENDA DE TESTE\n",
+                    encoding="utf-8",
+                )
+                recovered_publication = publish_to_youtube(project, video_path, account.id)
+
+        self.assertEqual(recovered_publication.video_id, initial_publication.video_id)
+        self.assertIsNotNone(recovered_publication.caption)
+        self.assertEqual(recovered_publication.caption.format, "srt")
+        self.assertEqual(service.videos_resource.insert_calls, 1)
+        self.assertEqual(service.captions_resource.insert_calls, 1)
 
 
 if __name__ == "__main__":

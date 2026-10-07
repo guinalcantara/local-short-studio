@@ -50,9 +50,9 @@ Em uma cena com `shots`, o primeiro plano repete exatamente `scene.image_path` e
 
 Cada cena, exceto a última, pode declarar `transition_to_next` com `cut`, `crossfade` ou `fade_black`. A duração opcional de fades aceita de 0,15 a 0,45 segundo; quando omitida, usa o padrão do perfil. Projetos antigos continuam usando a dissolvência padrão. As transições afetam somente o vídeo: narração, padding entre cenas, âncoras dos planos e legendas mantêm seus tempos originais.
 
-O bloco opcional `youtube` contém os metadados usados na publicação direta. Depois de renderizar o MP4, a interface permite escolher explicitamente uma conta conectada, revisar os dados e confirmar um upload resumível pela YouTube Data API. Não há conta padrão, agendamento, publicação em lote ou upload de legendas pela API nesta versão.
+O bloco opcional `youtube` contém os metadados usados na publicação direta. Depois de renderizar o MP4, a interface permite escolher explicitamente uma conta conectada, revisar os dados e confirmar um upload resumível pela YouTube Data API. Se `youtube.captions.enabled` estiver ativo e o Short tiver gerado o SRT, a faixa fechada é enviada em SRT ou convertida para VTT conforme o JSON. Não há conta padrão, agendamento ou publicação em lote.
 
-O plano da futura publicação direta está em [`docs/YOUTUBE_PUBLICATION_PLAN.md`](docs/YOUTUBE_PUBLICATION_PLAN.md). Para preparar uma conta localmente quando a integração for implementada, veja [`docs/YOUTUBE_AUTHENTICATION.md`](docs/YOUTUBE_AUTHENTICATION.md): upload exige OAuth 2.0, não uma chave de API.
+O fluxo de publicação está documentado em [`docs/YOUTUBE_PUBLICATION_PLAN.md`](docs/YOUTUBE_PUBLICATION_PLAN.md). Para preparar e reconectar uma conta localmente, veja [`docs/YOUTUBE_AUTHENTICATION.md`](docs/YOUTUBE_AUTHENTICATION.md): upload exige OAuth 2.0, não uma chave de API.
 
 Uma trilha catalogada é opcional e vale para o Short inteiro:
 
@@ -74,7 +74,7 @@ Quando ativadas, as legendas usam Montserrat ExtraBold em maiúsculas, com conto
 
 ## Saídas e testes
 
-Cada execução cria `output/<titulo>_<data>/` com JSON, texto, imagens usadas, WAVs, MP4 e arquivos SRT/ASS quando as legendas estão ativas. Quando há música, `soundtrack_used.json` registra a fonte efetiva, ganho, medições e metadados disponíveis sem gravar caminhos do host nem afirmar direitos de uso.
+Cada execução cria `output/<titulo>_<data>/` com JSON, texto, imagens usadas, WAVs, MP4 e arquivos SRT/ASS quando as legendas estão ativas. Ao publicar com `youtube.captions.format: "vtt"`, o app cria também o VTT nessa pasta. Quando há música, `soundtrack_used.json` registra a fonte efetiva, ganho, medições e metadados disponíveis sem gravar caminhos do host nem afirmar direitos de uso.
 
 ```powershell
 python -m compileall app
