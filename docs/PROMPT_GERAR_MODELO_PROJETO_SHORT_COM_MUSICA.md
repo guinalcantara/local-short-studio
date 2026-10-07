@@ -24,7 +24,8 @@ Crie um YouTube Short em português brasileiro sobre o tema informado. O usuári
 - Cada plano corresponde a uma imagem **real e distinta**, gerada separadamente. Não entregue somente prompts, não reutilize imagens e não faça colagens, grades ou folhas de contato. Não planeje ComfyUI ou Stable Diffusion no fluxo padrão.
 - O primeiro plano de cada cena começa no início da fala e **não tem** `start_phrase`. Cada plano seguinte tem `start_phrase`: uma sequência curta e exata de palavras presente **uma única vez** na `narration` da própria cena. Copie o trecho literalmente do texto falado. A sequência deve estar dentro de uma frase, não atravessar duas. Não use segundos estimados.
 - `start_phrase` indica o instante da **primeira palavra** em que a imagem deve mudar. Palavras posteriores servem apenas para tornar a âncora única e não atrasam o corte até o fim do trecho. Escolha sempre as primeiras palavras da ideia em que o novo plano deve começar.
-- Use de **2 a 4 palavras** por `start_phrase`. Prefira palavras comuns, curtas e fáceis de reconhecer na fala. Não prolongue uma âncora apenas para dar contexto: quanto mais palavras ela tiver, maior será a possibilidade de uma divergência na transcrição do Whisper.
+- Use **2 ou 3 palavras** por `start_phrase` como padrão; use 4 somente quando for indispensável torná-la única. Prefira palavras comuns, curtas e fáceis de reconhecer na fala. Não prolongue uma âncora apenas para dar contexto: quanto mais palavras ela tiver, maior será a possibilidade de uma divergência na transcrição do Whisper.
+- Nunca comece `start_phrase` com artigo, contração, preposição ou conector que o Whisper possa omitir, como `o`, `os`, `a`, `as`, `um`, `uma`, `no`, `na`, `mas`, `e` ou `então`. Comece por uma palavra de conteúdo, de preferência verbo, substantivo ou adjetivo. Por exemplo, use `precisam comparar`, não `Os cientistas precisam`.
 - Evite incluir em `start_phrase` nomes científicos ou próprios, siglas, números, palavras estrangeiras, termos raros e palavras cuja pronúncia ou grafia possa ser ambígua. Esses termos podem continuar na `narration`; escolha palavras comuns próximas como âncora.
 - Escolha as frases âncora para que a imagem apareça junto da ideia narrada; evite um plano que antecipe a revelação antes da fala. Preserve a ordem dos planos e das frases âncora. Cada âncora precisa ser curta, contígua, literal e ocorrer uma única vez.
 - `image_path` no nível da cena continua obrigatório para compatibilidade e deve ser **idêntico** ao `image_path` de `shots[0]`. Em cenas novas, inclua `shots` com 2 a 4 elementos. `motion` no nível da cena continua no JSON; cada plano pode omitir `motion` para herdar o da cena ou escolher um movimento permitido.
@@ -97,9 +98,9 @@ Crie um YouTube Short em português brasileiro sobre o tema informado. O usuári
 | `know_myself_patrick_patrikios` | Urbano/lo-fi — cultura pop, humor leve | 4% |
 | `mood_peyruis` | Urbano/lo-fi — explicação leve e urbana | 5% |
 
-### Metadados preparados para publicação futura
+### Metadados para publicação opcional
 
-Preencha o bloco opcional `youtube` no JSON. Ele apenas acompanha o projeto: o aplicativo ainda não usa OAuth, agenda ou API de publicação. Escreva roteiro, narração e metadados de publicação em português brasileiro; `visual_style` é a exceção técnica e fica em inglês, como no modelo atual.
+Preencha o bloco opcional `youtube` no JSON. Depois da renderização, o aplicativo pode publicar o MP4 e, quando solicitado, a faixa de legenda fechada usando OAuth local. Escreva roteiro, narração e metadados de publicação em português brasileiro; `visual_style` é a exceção técnica e fica em inglês, como no modelo atual.
 
 - `title`: título principal curto e específico em pt-BR.
 - `youtube.description`: descrição específica, com hashtags pertinentes e sem lista excessiva. `youtube.tags`: termos concisos sem `#` e sem duplicatas.
@@ -107,14 +108,14 @@ Preencha o bloco opcional `youtube` no JSON. Ele apenas acompanha o projeto: o a
 - `youtube.status.privacy_status`: `private` para revisão. `license`: `youtube`. `embeddable` e `public_stats_viewable`: `true`.
 - `self_declared_made_for_kids`: `true` somente para conteúdo especificamente direcionado a crianças. Dinossauros, por si sós, não determinam a opção.
 - `contains_synthetic_media`: avalie se cenas fotorrealistas geradas por IA parecem retratar uma situação real que não aconteceu. Ilustrações claramente não realistas não exigem `true` apenas por terem sido geradas por IA.
-- `notify_subscribers`: `true`. `youtube.captions`: preparo futuro em `pt-BR`, formato `vtt`. Não invente timestamps ou um VTT nesta etapa.
+- `notify_subscribers`: `true`. Para solicitar legenda fechada no YouTube, use `youtube.captions.enabled: true`, `language: "pt-BR"` e `format: "vtt"` ou `"srt"`. Nesse caso, `captions.enabled` também precisa ser `true`, pois é ele que gera o SRT com timestamps reais. Não invente timestamps nem um arquivo VTT no JSON.
 - Não inclua agendamento, `publishAt`, credenciais, tokens ou identificadores privados. Não afirme que o Short foi publicado.
 
 ### Legendas e arquivos
 
-- `captions.enabled`: `false` no JSON por padrão; o usuário pode ativar legendas visuais na interface. `captions.theme`: `modern_blue`.
+- `captions.enabled`: `false` no JSON por padrão; o usuário pode ativar legendas visuais na interface. Quando `youtube.captions.enabled` for `true`, defina também `captions.enabled: true` para gerar a faixa fechada. `captions.theme`: `modern_blue`.
 - Entregue exatamente dois arquivos: `modelo_projeto.json` (roteiro, metadados e ID da trilha) e `imagens_cenas.zip` (todas as imagens usadas, preferencialmente na raiz). A música é resolvida automaticamente pelo catálogo embutido no aplicativo; não inclua MP3 no ZIP de imagens.
-- As legendas VTT futuras do YouTube são independentes das legendas incorporadas no MP4. Não gere arquivo VTT separado.
+- A faixa fechada do YouTube é independente das legendas incorporadas no MP4. O aplicativo aproveita o SRT gerado localmente e o converte para VTT quando esse formato for solicitado; não gere arquivo VTT separado.
 
 ### Formato do JSON
 
@@ -137,7 +138,7 @@ Use os campos e tipos abaixo. O exemplo mostra somente duas cenas para explicar 
       "motion": "slow_push_in",
       "shots": [
         { "image_path": "cena_01_plano_01.png" },
-        { "image_path": "cena_01_plano_02.png", "start_phrase": "Mas os fósseis contam" }
+        { "image_path": "cena_01_plano_02.png", "start_phrase": "contam uma história" }
       ],
       "transition_to_next": { "type": "crossfade" }
     },
@@ -148,7 +149,7 @@ Use os campos e tipos abaixo. O exemplo mostra somente duas cenas para explicar 
       "motion": "slow_pull_out",
       "shots": [
         { "image_path": "cena_02_plano_01.png" },
-        { "image_path": "cena_02_plano_02.png", "start_phrase": "Eles poderiam ajudar" }
+        { "image_path": "cena_02_plano_02.png", "start_phrase": "ajudar a segurar" }
       ]
     }
   ],
@@ -180,7 +181,7 @@ Regras adicionais:
 
 ### Validação e entrega
 
-Antes de entregar, valide o JSON e conte as palavras faladas. Confirme que cada cena tem 2 a 4 planos, que `shots[0].image_path == scene.image_path`, que cada `start_phrase` tem de 2 a 4 palavras, ocorre exatamente uma vez na fala da cena, começa exatamente no ponto desejado para a troca e evita termos difíceis para reconhecimento de voz. Confirme também que as âncoras estão em ordem. Confira `transition_to_next` em todas as cenas menos a última, sem duração em `cut` e sem passagens pelo preto consecutivas. Confira correspondência exata, sem duplicatas, entre todos os arquivos referenciados nos planos e as imagens do ZIP; a referência duplicada entre `scene.image_path` e `shots[0].image_path` aponta para **um único arquivo**. Confirme que existe exatamente um `soundtrack.track_id` da tabela e que `volume_percent` coincide com seu volume indicado. Confira também o bloco `youtube` e a ausência de dados de agendamento ou credenciais.
+Antes de entregar, valide o JSON e conte as palavras faladas. Confirme que cada cena tem 2 a 4 planos, que `shots[0].image_path == scene.image_path`, que cada `start_phrase` tem preferencialmente 2 ou 3 palavras, ocorre exatamente uma vez na fala da cena, começa exatamente no ponto desejado para a troca, começa por palavra de conteúdo e evita artigos, conectores e termos difíceis para reconhecimento de voz. Confirme também que as âncoras estão em ordem. Confira `transition_to_next` em todas as cenas menos a última, sem duração em `cut` e sem passagens pelo preto consecutivas. Confira correspondência exata, sem duplicatas, entre todos os arquivos referenciados nos planos e as imagens do ZIP; a referência duplicada entre `scene.image_path` e `shots[0].image_path` aponta para **um único arquivo**. Confirme que existe exatamente um `soundtrack.track_id` da tabela e que `volume_percent` coincide com seu volume indicado. Confira também o bloco `youtube` e a ausência de dados de agendamento ou credenciais.
 
 Entregue links para `modelo_projeto.json` e `imagens_cenas.zip`, com prévias ou links individuais das imagens. Informe título, faixa selecionada, volume e duração estimada em uma linha, sem duplicar a narração.
 

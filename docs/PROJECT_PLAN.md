@@ -1,6 +1,6 @@
 # Local Short Studio — arquitetura atual
 
-**Estado:** versão operacional baseada em roteiro JSON + ZIP de imagens, com compatibilidade para uma imagem por cena, múltiplos planos sincronizados, transições configuráveis e uma trilha local opcional por Short. A publicação em plataformas e a geração local de imagens permanecem fora do fluxo ativo.
+**Estado:** versão operacional baseada em roteiro JSON + ZIP de imagens, com compatibilidade para uma imagem por cena, múltiplos planos sincronizados, transições configuráveis, trilha local opcional e publicação explícita no YouTube por conta OAuth local. A geração local de imagens permanece fora do fluxo ativo.
 
 ## Objetivo
 
@@ -24,6 +24,10 @@ Whisper quando houver legendas ou múltiplos planos
 FFmpeg: cortes entre planos, pan/zoom, transições entre cenas, legendas opcionais
         ↓
 MP4 9:16 + intermediários
+        ↓
+seleção explícita de conta OAuth + confirmação
+        ↓
+upload resumível opcional para o YouTube
 ```
 
 O app não gera imagens. Cada `image_path` é obrigatório e aponta para um basename no ZIP. Cenas antigas usam uma imagem; cenas novas podem declarar de 2 a 4 `shots`, com o primeiro plano igual ao `image_path` da cena e os demais ancorados por `start_phrase`. O validador aceita imagens na raiz ou em uma única subpasta, bloqueia ZIPs perigosos e mantém o mapeamento cena-imagem sem extrair caminhos controlados pelo arquivo.
@@ -51,7 +55,7 @@ As fronteiras visuais aceitam corte seco, dissolvência ou passagem pelo preto. 
 
 A narração completa de cada cena é gerada em uma única chamada normal do mecanismo de voz, sem pausa fixa inserida entre frases. O padding curto continua existindo somente entre cenas. Quando há `shots`, o Whisper roda mesmo sem legendas visuais; somente correspondências lexicais realmente observadas podem determinar um corte. As legendas opcionais usam Montserrat ExtraBold em maiúsculas, até três palavras por bloco, entrada em pop e posição/tamanho ajustáveis pela interface sem alterar o JSON.
 
-O bloco opcional `youtube` contém somente metadados validados e é preservado na exportação. Não há OAuth, upload, publicação, agendamento ou chamadas à API.
+O bloco opcional `youtube` contém os metadados validados para a publicação. Depois de renderizar um MP4, a interface lista apenas contas OAuth conectadas localmente, começa sem conta selecionada e exige confirmação explícita antes do upload. O token e o JSON do cliente OAuth ficam em `input/youtube/`, fora do Git; o registro de publicação salvo na execução contém apenas ID, URL, canal, horário e hash do MP4. Agendamento e envio de legendas pela API continuam fora do escopo.
 
 ## Perfil de saída
 
@@ -64,13 +68,13 @@ O bloco opcional `youtube` contém somente metadados validados e é preservado n
 3. Todas as imagens referenciadas pelos planos são validadas antes da voz e copiadas apenas para a pasta da execução.
 4. O mecanismo escolhido usa CUDA sequencialmente para todas as falas; Kokoro e Chatterbox não são usados ao mesmo tempo.
 5. FFmpeg gera MP4 vertical com cortes secos entre planos e transições `cut`, `crossfade` ou `fade_black` entre cenas, preservando movimentos, áudio e legendas opcionais configuráveis.
-6. Metadados `youtube` são aceitos, validados e preservados sem publicação.
+6. Metadados `youtube` são aceitos, validados, preservados e mapeados para o upload opcional por conta OAuth selecionada.
 7. Uma faixa catalogada é resolvida antes do TTS, não altera os tempos visuais ou da voz e gera `soundtrack_used.json` sem caminhos do host.
 8. Testes cobrem esquema, catálogo, ganho LUFS, voz por bloco, alinhamento lexical, segurança do ZIP, transições mistas e renderização da timeline.
 
 ## Próximas etapas, não implementadas
 
-- integração autorizada de publicação após revisão da API oficial;
+- envio opcional de legendas VTT e consulta de processamento após o upload;
 - reprocessamento seletivo de uma cena;
 - ativação do perfil horizontal;
 - eventual integração opcional de geração de imagens, sem torná-la dependência do fluxo principal.
