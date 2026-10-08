@@ -3,12 +3,27 @@ import unittest
 from pathlib import Path
 import tempfile
 from app.captions import CaptionCue, caption_segments, srt_timestamp, wrap_caption, write_ass
-from app.schemas import SceneTransition, Shot, VideoProject, example_project
+from app.schemas import Camera, CameraPose, Scene, SceneTransition, Shot, VideoProject, example_project
 from app.renderer import load_profiles
 from app.voices import DEFAULT_VOICE, normalize_tts_engine, normalize_voice
 
 
 class ProjectTests(unittest.TestCase):
+    @staticmethod
+    def camera(
+        *,
+        start_x: float = 0.5,
+        start_y: float = 0.5,
+        start_zoom: float = 1.0,
+        end_x: float = 0.5,
+        end_y: float = 0.5,
+        end_zoom: float = 1.0,
+    ) -> Camera:
+        return Camera(
+            start=CameraPose(focus_x=start_x, focus_y=start_y, zoom=start_zoom),
+            end=CameraPose(focus_x=end_x, focus_y=end_y, zoom=end_zoom),
+        )
+
     def test_example_project_uses_required_image_paths_and_captions_default_off(self):
         project = example_project()
         self.assertEqual(project.profile, "short_vertical")
@@ -37,6 +52,103 @@ class ProjectTests(unittest.TestCase):
         )
         self.assertIsNone(project.youtube)
         self.assertIsNone(project.soundtrack)
+
+    def test_camera_contract_requires_complete_finite_strict_keyframes(self):
+        pose = {"focus_x": 0.5, "focus_y": 0.5, "zoom": 1.0}
+        camera = Camera.model_validate({"start": pose, "end": pose})
+        self.assertEqual(camera.easing, "quintic")
+
+        invalid_cameras = [
+            {"start": pose},
+            {"end": pose},
+            {"start": {"focus_x": 0.5, "focus_y": 0.5}, "end": pose},
+            {"start": {**pose, "focus_x": float("nan")}, "end": pose},
+            {"start": {**pose, "focus_y": float("inf")}, "end": pose},
+            {"start": {**pose, "zoom": 0.99}, "end": pose},
+            {"start": pose, "end": {**pose, "zoom": 1.36}},
+            {"start": {**pose, "focus_x": "0.5"}, "end": pose},
+            {"start": pose, "end": pose, "easing": "linear"},
+            {"start": pose, "end": pose, "unexpected": True},
+        ]
+        for value in invalid_cameras:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                Camera.model_validate(value)
+
+    def test_camera_inherits_from_scene_and_shot_overrides_it(self):
+        scene_camera = self.camera(start_x=0.2, end_x=0.3, end_zoom=1.1)
+        shot_camera = self.camera(start_x=0.7, end_x=0.8, end_zoom=1.2)
+        scene = Scene(
+            id="camera",
+            narration="Primeira imagem. Segunda imagem aparece.",
+            image_path="base.png",
+            motion="pan_left",
+            camera=scene_camera,
+            shots=[
+                Shot(image_path="base.png"),
+                Shot(
+                    image_path="detalhe.png",
+                    start_phrase="Segunda imagem",
+                    motion="pan_right",
+                    camera=shot_camera,
+                ),
+            ],
+        )
+
+        self.assertEqual(scene.effective_camera(scene.shots[0]), scene_camera)
+        self.assertEqual(scene.effective_camera(scene.shots[1]), shot_camera)
+        self.assertEqual(scene.effective_motion(scene.shots[0]), "pan_left")
+        self.assertEqual(scene.effective_motion(scene.shots[1]), "pan_right")
+
+    def test_reused_image_requires_distinct_explicit_effective_cameras(self):
+        narration = "Primeira imagem. Segunda imagem aparece."
+        base = self.camera(start_x=0.2, end_x=0.3, end_zoom=1.1)
+        alternate = self.camera(start_x=0.7, end_x=0.8, end_zoom=1.2)
+
+        with self.assertRaisesRegex(ValueError, "câmeras efetivas"):
+            Scene(
+                id="sem_camera",
+                narration=narration,
+                image_path="base.png",
+                shots=[
+                    Shot(image_path="base.png"),
+                    Shot(image_path="base.png", start_phrase="Segunda imagem"),
+                ],
+            )
+
+        with self.assertRaisesRegex(ValueError, "câmeras efetivas"):
+            Scene(
+                id="mesma_camera",
+                narration=narration,
+                image_path="base.png",
+                shots=[
+                    Shot(image_path="base.png", camera=base),
+                    Shot(image_path="BASE.PNG", start_phrase="Segunda imagem", camera=base),
+                ],
+            )
+
+        allowed = Scene(
+            id="cameras_distintas",
+            narration=narration,
+            image_path="base.png",
+            camera=base,
+            shots=[
+                Shot(image_path="base.png"),
+                Shot(image_path="BASE.PNG", start_phrase="Segunda imagem", camera=alternate),
+            ],
+        )
+        self.assertEqual(len(allowed.shots or ()), 2)
+
+        with self.assertRaisesRegex(ValueError, "câmeras efetivas"):
+            Scene(
+                id="terceiro_repetido",
+                narration="Primeira imagem. Segunda imagem aparece. Terceira imagem aparece.",
+                image_path="base.png",
+                shots=[
+                    Shot(image_path="base.png", camera=base),
+                    Shot(image_path="base.png", start_phrase="Segunda imagem", camera=alternate),
+                    Shot(image_path="base.png", start_phrase="Terceira imagem", camera=alternate),
+                ],
+            )
 
     def test_soundtrack_is_strict_and_conflicts_with_legacy_music_path(self):
         data = example_project().model_dump()

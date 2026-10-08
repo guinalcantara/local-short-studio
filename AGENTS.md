@@ -42,6 +42,10 @@ Leia `README.md`, `docs/PROJECT_PLAN.md`, `docs/USER_GUIDE.md` e `docs/TROUBLESH
 
 Use `apply_patch` para editar arquivos. Não faça `git reset --hard`, checkout destrutivo ou remoção ampla de arquivos.
 
+## OpenSpec
+
+As especificações vigentes ficam em `openspec/specs/` e descrevem o comportamento de referência do projeto. Antes de propor uma feature ou correção, consulte as specs relacionadas e use o fluxo OpenSpec (`$openspec-propose`) para criar os artefatos da mudança. Não altere os padrões legados de duração, fluxo de geração, saída ou publicação sem uma especificação explícita de compatibilidade.
+
 ## Validação
 
 O host Windows pode não ter Python instalado. Prefira validar no container Docker:

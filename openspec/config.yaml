@@ -1,0 +1,44 @@
+schema: spec-driven
+
+context: |
+  Language: Português brasileiro
+  All artifacts must be written in Português brasileiro.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  Product: Local Short Studio renders vertical Shorts locally from a strict JSON project and a secure ZIP of existing images.
+  Core flow: JSON + ZIP -> Kokoro or Chatterbox PT-BR on CUDA -> Whisper when captions or shots need word timing -> FFmpeg MP4.
+  Constraints: no image generation or ComfyUI in the default flow; preserve ZIP path and size safety; never version secrets or generated artifacts.
+  Publishing: YouTube uploads require an explicitly selected local OAuth account and a per-MP4 user confirmation.
+  Compatibility: existing JSON, the one-click generation flow, output layout, and youtube_publication.json behavior remain stable; new features are opt-in unless a spec explicitly changes a default.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+rules:
+  specs:
+    - State observable behavior and compatibility requirements, not implementation-only details.
+    - Include at least one Scenario for every Requirement.
+  proposal:
+    - Identify effects on JSON compatibility, cache invalidation, generated outputs, and YouTube confirmation when relevant.
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
+operations:
+  apply:
+    guidance:
+      - Preserve AGENTS.md security constraints and run the relevant container-based tests.
+      - Do not start or publish to YouTube without explicit user authorization.

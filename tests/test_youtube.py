@@ -16,6 +16,7 @@ from app.youtube import (
     load_youtube_publication,
     pending_youtube_authorization,
     publish_to_youtube,
+    publication_record_path,
     remove_youtube_account,
     youtube_video_resource,
 )
@@ -247,6 +248,29 @@ class YouTubeTests(unittest.TestCase):
         self.assertEqual(recovered_publication.caption.format, "srt")
         self.assertEqual(service.videos_resource.insert_calls, 1)
         self.assertEqual(service.captions_resource.insert_calls, 1)
+
+    def test_new_render_variant_keeps_the_previous_publication_record(self):
+        project = project_for_youtube()
+        project.youtube.captions.enabled = False
+        account = YouTubeAccount(id="d" * 32, label="Canal", channel_id="UC987", channel_title="Canal")
+        first_service = FakeYouTubeService(FakeUploadRequest())
+        second_service = FakeYouTubeService(FakeUploadRequest())
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = Path(temp_dir) / "short.mp4"
+            video_path.write_bytes(b"first-render")
+            with patch("app.youtube.get_youtube_account", return_value=account), patch(
+                "app.youtube._credentials_for_account", return_value=FakeCredentials()
+            ), patch("app.youtube._youtube_service", side_effect=[first_service, second_service]):
+                first = publish_to_youtube(project, video_path, account.id)
+                first_record = publication_record_path(video_path)
+                video_path.write_bytes(b"second-render")
+                second = publish_to_youtube(project, video_path, account.id)
+                second_record = publication_record_path(video_path)
+
+            self.assertNotEqual(first.video_sha256, second.video_sha256)
+            self.assertNotEqual(first_record, second_record)
+            self.assertTrue(first_record.is_file())
+            self.assertTrue(second_record.is_file())
 
 
 if __name__ == "__main__":
