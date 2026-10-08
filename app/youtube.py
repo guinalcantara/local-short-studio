@@ -525,14 +525,24 @@ def _caption_file_for_publication(project: VideoProject, video_path: Path) -> tu
 
 
 def publication_record_path(video_path: str | Path) -> Path:
-    return Path(video_path).parent / "youtube_publication.json"
+    """Return the immutable local publication record for this exact MP4.
+
+    Final renders are intentionally allowed to coexist in one editing workspace.
+    Keeping the record under the video's content hash prevents a newly rendered
+    variant from replacing the review/publication state of an older MP4.
+    """
+    target = Path(video_path)
+    if target.is_file():
+        digest = _video_sha256(target)
+    else:
+        # The caller normally passes an existing MP4.  This fallback keeps the
+        # helper deterministic for diagnostics without treating a missing file
+        # as a publishable artefact.
+        digest = sha256(str(target.resolve()).encode("utf-8")).hexdigest()
+    return target.parent / "youtube_publications" / f"{digest}.json"
 
 
-def load_youtube_publication(video_path: str | Path) -> YouTubePublication | None:
-    record_path = publication_record_path(video_path)
-    if not record_path.is_file():
-        return None
-    data = _read_json(record_path, None)
+def _publication_from_data(data: Any) -> YouTubePublication:
     if not isinstance(data, dict):
         raise YouTubeError("O registro local de publicação do YouTube é inválido.")
     try:
@@ -560,6 +570,34 @@ def load_youtube_publication(video_path: str | Path) -> YouTubePublication | Non
         )
     except (KeyError, ValueError) as exc:
         raise YouTubeError("O registro local de publicação do YouTube é inválido.") from exc
+
+
+def load_youtube_publication(video_path: str | Path) -> YouTubePublication | None:
+    target = Path(video_path)
+    record_path = publication_record_path(target)
+    if not record_path.is_file():
+        # Read a legacy record only when it belongs to this exact file.  It is
+        # never overwritten, so existing publication history remains intact.
+        legacy_path = target.parent / "youtube_publication.json"
+        if not legacy_path.is_file():
+            return None
+        publication = _publication_from_data(_read_json(legacy_path, None))
+        if target.is_file() and publication.video_sha256 != _video_sha256(target):
+            return None
+        return publication
+    return _publication_from_data(_read_json(record_path, None))
+
+
+def _save_youtube_publication(target: Path, publication: YouTubePublication) -> None:
+    """Persist the immutable variant record and the original latest-record path.
+
+    The hash-addressed record prevents one render variant from blocking another.
+    Keeping ``youtube_publication.json`` updated retains the output convention
+    used by existing workspaces and external local tooling.
+    """
+    data = asdict(publication)
+    _write_json(publication_record_path(target), data)
+    _write_json(target.parent / "youtube_publication.json", data)
 
 
 def _upload_caption(
@@ -650,7 +688,7 @@ def publish_to_youtube(
             video_sha256=existing.video_sha256,
             caption=caption,
         )
-        _write_json(publication_record_path(target), asdict(publication))
+        _save_youtube_publication(target, publication)
         report_progress("Legenda enviada; o YouTube pode continuar processando o vídeo.", 1.0)
         return publication
 
@@ -685,7 +723,7 @@ def publish_to_youtube(
         published_at=datetime.now(UTC).isoformat(),
         video_sha256=video_digest,
     )
-    _write_json(publication_record_path(target), asdict(publication))
+    _save_youtube_publication(target, publication)
     if caption_file is not None:
         caption_path, caption_format = caption_file
         caption = _upload_caption(
@@ -705,7 +743,7 @@ def publish_to_youtube(
             video_sha256=publication.video_sha256,
             caption=caption,
         )
-        _write_json(publication_record_path(target), asdict(publication))
+        _save_youtube_publication(target, publication)
         report_progress("MP4 e legenda enviados; o YouTube pode continuar processando o vídeo.", 1.0)
     else:
         report_progress("Upload concluído; o YouTube pode continuar processando o vídeo.", 1.0)

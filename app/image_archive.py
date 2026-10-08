@@ -9,7 +9,7 @@ import stat
 from typing import BinaryIO, Iterable
 import zipfile
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp"})
@@ -116,6 +116,40 @@ def _is_symlink(info: zipfile.ZipInfo) -> bool:
     return stat.S_ISLNK(mode)
 
 
+def _validated_image_data(data: bytes, limits: ZipLimits, basename: str) -> ArchiveImage:
+    if len(data) > limits.max_image_bytes:
+        raise ImageZipError(f"A imagem {basename} excede o limite configurado.")
+    try:
+        with Image.open(BytesIO(data)) as image:
+            image_format = (image.format or "").upper()
+            image.verify()
+        # Pillow requires verify() immediately after opening. Reopen before
+        # reading EXIF orientation for the camera coordinate system.
+        with Image.open(BytesIO(data)) as image:
+            # The camera contract measures focus after EXIF orientation.
+            width, height = ImageOps.exif_transpose(image).size
+            if width <= 0 or height <= 0 or width * height > limits.max_image_pixels:
+                raise ImageZipError(f"Resolução incompatível em {basename}: {width}x{height}.")
+    except ImageZipError:
+        raise
+    except (UnidentifiedImageError, OSError, RuntimeError, ValueError) as exc:
+        raise ImageZipError(f"Arquivo de imagem inválido: {basename} ({exc})") from exc
+    return ArchiveImage(basename, basename, data, width, height, image_format)
+
+
+def validate_image_upload(
+    filename: str,
+    data: bytes | bytearray | memoryview,
+    *,
+    limits: ZipLimits | None = None,
+) -> ArchiveImage:
+    """Validate a single replacement image with the same limits as a ZIP member."""
+    normalize_basename(filename)
+    raw = bytes(data)
+    active_limits = limits or ZipLimits.from_environment()
+    return _validated_image_data(raw, active_limits, filename)
+
+
 def _read_image(info: zipfile.ZipInfo, archive: zipfile.ZipFile, limits: ZipLimits, basename: str) -> ArchiveImage:
     if info.file_size > limits.max_image_bytes:
         raise ImageZipError(f"A imagem {basename} excede o limite configurado.")
@@ -123,20 +157,15 @@ def _read_image(info: zipfile.ZipInfo, archive: zipfile.ZipFile, limits: ZipLimi
         data = archive.read(info)
     except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
         raise ImageZipError(f"Não foi possível ler a imagem {basename}: {exc}") from exc
-    if len(data) > limits.max_image_bytes:
-        raise ImageZipError(f"A imagem {basename} excede o limite configurado.")
-    try:
-        with Image.open(BytesIO(data)) as image:
-            width, height = image.size
-            image_format = (image.format or "").upper()
-            if width <= 0 or height <= 0 or width * height > limits.max_image_pixels:
-                raise ImageZipError(f"Resolução incompatível em {basename}: {width}x{height}.")
-            image.verify()
-    except ImageZipError:
-        raise
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise ImageZipError(f"Arquivo de imagem inválido: {basename} ({exc})") from exc
-    return ArchiveImage(basename, info.filename, data, width, height, image_format)
+    validated = _validated_image_data(data, limits, basename)
+    return ArchiveImage(
+        basename,
+        info.filename,
+        validated.data,
+        validated.width,
+        validated.height,
+        validated.format,
+    )
 
 
 def _open_source(source: bytes | bytearray | memoryview | str | Path | BinaryIO) -> tuple[zipfile.ZipFile, object | None]:

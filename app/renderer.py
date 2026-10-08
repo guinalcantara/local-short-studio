@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+import math
 import os
 from pathlib import Path
 import shutil
 import subprocess
 from typing import Any, Literal
+
+from PIL import Image, ImageOps
 
 from app.captions import (
     DEFAULT_CAPTION_FONT,
@@ -18,6 +21,7 @@ from app.captions import (
     write_ass,
     write_srt,
 )
+from app.schemas import Camera, CameraPose
 
 
 MOTIONS = ["slow_push_in", "slow_pull_out", "pan_left", "pan_right", "pan_up", "pan_down", "static"]
@@ -28,10 +32,31 @@ class RenderError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class CameraCrop:
+    """A 9:16 crop rectangle in EXIF-corrected source-image coordinates."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+    image_width: float
+    image_height: float
+
+    @property
+    def right(self) -> float:
+        return self.x + self.width
+
+    @property
+    def bottom(self) -> float:
+        return self.y + self.height
+
+
+@dataclass(frozen=True)
 class RenderShot:
     image_path: str | Path
     duration: float
     motion: str = "auto"
+    camera: Camera | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +75,158 @@ class RenderTransition:
     duration_explicit: bool = False
     source_scene_id: str | None = None
     target_scene_id: str | None = None
+
+
+def resolve_camera(
+    shot_camera: Camera | None,
+    scene_camera: Camera | None,
+) -> Camera | None:
+    """Resolve camera precedence without combining it with legacy motion."""
+    return shot_camera if shot_camera is not None else scene_camera
+
+
+def _positive_finite(value: int | float, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} deve ser numérico")
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric <= 0:
+        raise ValueError(f"{name} deve ser positivo e finito")
+    return numeric
+
+
+def exif_oriented_dimensions(
+    image_width: int | float,
+    image_height: int | float,
+    exif_orientation: int | None = None,
+) -> tuple[float, float]:
+    """Return dimensions after the EXIF orientation transform.
+
+    Focus values in the camera contract are always measured in this oriented
+    coordinate system. The caller must rasterize with ``ImageOps.exif_transpose``
+    (or an equivalent transform) before applying the returned crop to pixels.
+    """
+    width = _positive_finite(image_width, "image_width")
+    height = _positive_finite(image_height, "image_height")
+    orientation = 1 if exif_orientation is None else exif_orientation
+    if isinstance(orientation, bool) or not isinstance(orientation, int) or not 1 <= orientation <= 8:
+        raise ValueError("exif_orientation deve ser um inteiro entre 1 e 8")
+    if orientation in {5, 6, 7, 8}:
+        return height, width
+    return width, height
+
+
+def minimum_cover_crop(
+    image_width: int | float,
+    image_height: int | float,
+    output_width: int | float,
+    output_height: int | float,
+    *,
+    exif_orientation: int | None = None,
+) -> tuple[float, float]:
+    """Return the largest source crop with the output aspect ratio.
+
+    This is the zoom=1 reference rectangle: it fills the output without bars
+    while retaining as much of the EXIF-corrected image as possible.
+    """
+    width, height = exif_oriented_dimensions(image_width, image_height, exif_orientation)
+    target_width = _positive_finite(output_width, "output_width")
+    target_height = _positive_finite(output_height, "output_height")
+    target_aspect = target_width / target_height
+    image_aspect = width / height
+    if image_aspect >= target_aspect:
+        return height * target_aspect, height
+    return width, width / target_aspect
+
+
+def quintic_ease(progress: float) -> float:
+    """Quintic smoothstep used by the camera contract (zero velocity at ends)."""
+    if isinstance(progress, bool) or not isinstance(progress, (int, float)):
+        raise ValueError("progress deve ser numérico")
+    value = float(progress)
+    if not math.isfinite(value):
+        raise ValueError("progress deve ser finito")
+    value = min(1.0, max(0.0, value))
+    return value * value * value * (value * (value * 6.0 - 15.0) + 10.0)
+
+
+def interpolate_camera_pose(camera: Camera, progress: float) -> CameraPose:
+    """Interpolate a validated camera path at a normalized frame position."""
+    if camera.easing != "quintic":
+        raise ValueError(f"Easing de câmera não suportado: {camera.easing}")
+    eased = quintic_ease(progress)
+
+    def interpolate(start: float, end: float) -> float:
+        return start + (end - start) * eased
+
+    return CameraPose(
+        focus_x=interpolate(camera.start.focus_x, camera.end.focus_x),
+        focus_y=interpolate(camera.start.focus_y, camera.end.focus_y),
+        zoom=interpolate(camera.start.zoom, camera.end.zoom),
+    )
+
+
+def camera_crop_rect(
+    image_width: int | float,
+    image_height: int | float,
+    output_width: int | float,
+    output_height: int | float,
+    pose: CameraPose,
+    *,
+    exif_orientation: int | None = None,
+) -> CameraCrop:
+    """Map one camera pose to a bounded, aspect-correct crop rectangle.
+
+    ``pose.focus_x``/``focus_y`` are measured after EXIF correction. At image
+    edges, the requested focus is limited to the closest crop that remains
+    wholly inside available pixels; this is the rectangle the UI should show.
+    """
+    width, height = exif_oriented_dimensions(image_width, image_height, exif_orientation)
+    base_width, base_height = minimum_cover_crop(
+        image_width,
+        image_height,
+        output_width,
+        output_height,
+        exif_orientation=exif_orientation,
+    )
+    zoom = pose.zoom
+    crop_width = base_width / zoom
+    crop_height = base_height / zoom
+    max_x = max(0.0, width - crop_width)
+    max_y = max(0.0, height - crop_height)
+    desired_x = width * pose.focus_x - crop_width / 2.0
+    desired_y = height * pose.focus_y - crop_height / 2.0
+    x = min(max(desired_x, 0.0), max_x)
+    y = min(max(desired_y, 0.0), max_y)
+    return CameraCrop(x, y, crop_width, crop_height, width, height)
+
+
+def camera_crop_for_frame(
+    image_width: int | float,
+    image_height: int | float,
+    output_width: int | float,
+    output_height: int | float,
+    camera: Camera,
+    frame_index: int,
+    frame_count: int,
+    *,
+    exif_orientation: int | None = None,
+) -> CameraCrop:
+    """Resolve the exact bounded crop for one frame of an explicit camera path."""
+    if isinstance(frame_index, bool) or not isinstance(frame_index, int):
+        raise ValueError("frame_index deve ser inteiro")
+    if isinstance(frame_count, bool) or not isinstance(frame_count, int) or frame_count < 1:
+        raise ValueError("frame_count deve ser inteiro positivo")
+    if not 0 <= frame_index < frame_count:
+        raise ValueError("frame_index deve estar dentro de frame_count")
+    progress = 0.0 if frame_count == 1 else frame_index / (frame_count - 1)
+    return camera_crop_rect(
+        image_width,
+        image_height,
+        output_width,
+        output_height,
+        interpolate_camera_pose(camera, progress),
+        exif_orientation=exif_orientation,
+    )
 
 
 def resolve_transitions(
@@ -139,7 +316,7 @@ def _round_shot_durations(shots: tuple[RenderShot, ...], scene_duration: float, 
     if any(frames < 2 for frames in frame_counts):
         raise ValueError("Um plano visual ficou menor que dois frames apos o arredondamento.")
     return tuple(
-        RenderShot(shot.image_path, frames / fps, shot.motion)
+        RenderShot(shot.image_path, frames / fps, shot.motion, shot.camera)
         for shot, frames in zip(shots, frame_counts)
     )
 
@@ -205,6 +382,84 @@ def _run(command: list[str]) -> None:
         raise RenderError("FFmpeg falhou.\n" + result.stderr[-6000:])
 
 
+def _render_explicit_camera_clip(
+    source: Path,
+    output: Path,
+    *,
+    camera: Camera,
+    output_width: int,
+    output_height: int,
+    fps: int,
+    total_frames: int,
+    camera_frames: int,
+    encoder_mode: str,
+    crf: int,
+    preset: str,
+) -> None:
+    """Render a bounded explicit camera path from EXIF-corrected pixels.
+
+    FFmpeg's ``zoompan`` cannot vary the crop width and height while keeping a
+    focus expressed in original-image coordinates.  Generating the RGB frames
+    here keeps the crop helper used by the UI and the final render identical,
+    including at edges.  The camera reaches its last keyframe at the real plan
+    duration; any transition/hold frames retain that last framing.
+    """
+    if total_frames < 1:
+        raise ValueError("A câmera precisa de ao menos um frame para renderizar.")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "rawvideo", "-pix_fmt", "rgb24",
+        "-s", f"{output_width}x{output_height}", "-framerate", str(fps),
+        "-i", "pipe:0", "-frames:v", str(total_frames), "-an",
+        *_encoder_args(encoder_mode, crf, preset),
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(output),
+    ]
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        with Image.open(source) as original:
+            image = ImageOps.exif_transpose(original).convert("RGB")
+        resampling = getattr(Image, "Resampling", Image).LANCZOS
+        interpolation_frames = max(1, camera_frames)
+        for frame_index in range(total_frames):
+            camera_index = min(frame_index, interpolation_frames - 1)
+            crop = camera_crop_for_frame(
+                image.width,
+                image.height,
+                output_width,
+                output_height,
+                camera,
+                camera_index,
+                interpolation_frames,
+            )
+            left = max(0, min(image.width - 1, int(math.floor(crop.x))))
+            top = max(0, min(image.height - 1, int(math.floor(crop.y))))
+            right = max(left + 1, min(image.width, int(math.ceil(crop.right))))
+            bottom = max(top + 1, min(image.height, int(math.ceil(crop.bottom))))
+            frame = image.crop((left, top, right, bottom)).resize(
+                (output_width, output_height), resampling
+            )
+            assert process.stdin is not None
+            process.stdin.write(frame.tobytes())
+        assert process.stdin is not None
+        process.stdin.close()
+        return_code = process.wait()
+        stderr = process.stderr.read().decode("utf-8", errors="replace") if process.stderr else ""
+        if return_code:
+            raise RenderError("FFmpeg falhou ao renderizar a câmera explícita.\n" + stderr[-6000:])
+    except Exception:
+        if process.stdin is not None and not process.stdin.closed:
+            process.stdin.close()
+        process.kill()
+        process.wait()
+        raise
+
+
 def _encoder_args(encoder_mode: str, crf: int, preset: str) -> list[str]:
     mode = encoder_mode.lower()
     if mode == "auto" and shutil.which("ffmpeg"):
@@ -233,6 +488,162 @@ def bounded_music_fades(
         return 0.0, 0.0
     scale = min(1.0, total / requested)
     return fade_in * scale, fade_out * scale
+
+
+def compose_scene_clips(
+    scene_clips: list[str | Path],
+    scene_audio_durations: list[float],
+    cues: list[CaptionCue],
+    output_path: str | Path,
+    *,
+    profile: dict[str, Any],
+    narration_path: str | Path,
+    scene_ids: list[str] | None = None,
+    transitions: list[RenderTransition] | None = None,
+    music_path: str | Path | None = None,
+    music_volume: float = 0.12,
+    music_fade_in_seconds: float | None = None,
+    music_fade_out_seconds: float | None = None,
+    captions_enabled: bool = False,
+    caption_font: str = DEFAULT_CAPTION_FONT,
+    caption_font_size: int | None = None,
+    caption_height_percent: float | None = None,
+    caption_uppercase: bool | None = None,
+    caption_entrance_effect: str | None = None,
+    encoder_mode: str | None = None,
+    assets_dir: str | Path = "/workspace/assets",
+    progress=None,
+) -> Path:
+    """Compose cached base scene clips without invalidating them for transitions.
+
+    Each cached clip contains only its own visual duration.  Boundary holds are
+    added with ``tpad`` here, so changing a transition, caption or soundtrack
+    reuses the per-scene visual render unchanged.
+    """
+    if not scene_clips or len(scene_clips) != len(scene_audio_durations):
+        raise ValueError("Os clipes visuais e as durações das cenas precisam corresponder.")
+    paths = [Path(path) for path in scene_clips]
+    if any(not path.is_file() for path in paths):
+        raise FileNotFoundError("Um clipe visual em cache não está disponível.")
+    narration = Path(narration_path)
+    if not narration.is_file():
+        raise FileNotFoundError(f"Narração não encontrada: {narration}")
+
+    width, height, fps = int(profile["width"]), int(profile["height"]), int(profile["fps"])
+    default_transition = float(profile["transition_seconds"])
+    hold = max(0.0, float(profile.get("scene_hold_seconds", 0.0)))
+    crf, preset = int(profile.get("crf", 20)), str(profile.get("preset", "medium"))
+    encoder = encoder_mode or os.getenv("VIDEO_ENCODER", "auto")
+    scene_durations = [max(float(value), 0.4) for value in scene_audio_durations]
+    scenes = [
+        RenderScene((RenderShot(path, duration),), (scene_ids or [None] * len(paths))[index])
+        for index, (path, duration) in enumerate(zip(paths, scene_durations))
+    ]
+    resolved, notices = resolve_transitions(transitions, scenes, default_duration=default_transition, fps=fps)
+    if progress:
+        for notice in notices:
+            progress(notice, None)
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    work = out.parent / f"{out.stem}_compose_work"
+    work.mkdir(parents=True, exist_ok=True)
+    padded_paths: list[Path] = []
+    for index, path in enumerate(paths):
+        extension = resolved[index].duration if index < len(resolved) else hold
+        if extension <= 0:
+            padded_paths.append(path)
+            continue
+        padded = work / f"scene_{index:02d}_padded.mp4"
+        _run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(path),
+            "-vf", f"tpad=stop_mode=clone:stop_duration={extension:.4f}", "-an",
+            *_encoder_args(encoder, crf, preset), "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(padded),
+        ])
+        padded_paths.append(padded)
+    clip_durations = [
+        duration + (resolved[index].duration if index < len(resolved) else hold)
+        for index, duration in enumerate(scene_durations)
+    ]
+
+    inputs = [argument for path in padded_paths for argument in ("-i", str(path))]
+    audio_input_index = len(padded_paths)
+    inputs.extend(["-i", str(narration)])
+    has_music = bool(music_path and Path(music_path).is_file())
+    music_input_index = audio_input_index + 1
+    if has_music:
+        inputs.extend(["-stream_loop", "-1", "-i", str(music_path)])
+
+    graph: list[str] = [
+        f"[{index}:v]settb=AVTB,setpts=PTS-STARTPTS[v{index}]"
+        for index in range(len(padded_paths))
+    ]
+    current_label, elapsed = "v0", clip_durations[0]
+    for index in range(1, len(padded_paths)):
+        boundary = resolved[index - 1]
+        next_label = f"vx{index}"
+        if boundary.type == "cut":
+            graph.append(f"[{current_label}][v{index}]concat=n=2:v=1:a=0[{next_label}]")
+        else:
+            effect = "fade" if boundary.type == "crossfade" else "fadeblack"
+            graph.append(
+                f"[{current_label}][v{index}]xfade=transition={effect}:duration={boundary.duration:.4f}:"
+                f"offset={max(0.0, elapsed - boundary.duration):.4f}[{next_label}]"
+            )
+        current_label = next_label
+        elapsed += clip_durations[index] - boundary.duration
+    graph.append(f"[{current_label}]fps={fps},format=yuv420p[vbase]")
+    video_label = "vbase"
+    if captions_enabled:
+        resolved_size = int(caption_font_size if caption_font_size is not None else profile.get("caption_font_size", DEFAULT_CAPTION_FONT_SIZE))
+        resolved_height = float(caption_height_percent if caption_height_percent is not None else profile.get("caption_height_percent", DEFAULT_CAPTION_HEIGHT_PERCENT))
+        uppercase = bool(profile.get("caption_uppercase", DEFAULT_CAPTION_UPPERCASE)) if caption_uppercase is None else bool(caption_uppercase)
+        entrance = str(profile.get("caption_entrance_effect", DEFAULT_CAPTION_ENTRANCE_EFFECT)) if caption_entrance_effect is None else caption_entrance_effect
+        write_srt(cues, out.with_suffix(".srt"), uppercase=uppercase)
+        ass_path = write_ass(
+            cues, out.with_suffix(".ass"), font_name=caption_font,
+            font_size=max(24, min(160, resolved_size)),
+            margin_vertical=int(profile.get("caption_margin_vertical", 250)),
+            vertical_position_percent=max(0.0, min(100.0, resolved_height)),
+            play_res_x=width, play_res_y=height, uppercase=uppercase, entrance_effect=entrance,
+        )
+        graph.append(f"[vbase]subtitles='{_quote_filter_path(ass_path)}':fontsdir='{_quote_filter_path(Path(assets_dir) / 'fonts')}'[vcap]")
+        video_label = "vcap"
+
+    music_volume = min(1.0, max(0.0, float(music_volume)))
+    output_duration = sum(scene_durations) + hold
+    if has_music:
+        if music_fade_in_seconds is not None or music_fade_out_seconds is not None:
+            fade_in, fade_out = bounded_music_fades(output_duration, music_fade_in_seconds or 0.0, music_fade_out_seconds or 0.0)
+            fades: list[str] = []
+            if fade_in:
+                fades.append(f"afade=t=in:st=0:d={fade_in:.4f}")
+            if fade_out:
+                fades.append(f"afade=t=out:st={max(0.0, output_duration - fade_out):.4f}:d={fade_out:.4f}")
+            fade_chain = (",".join(fades) + ",") if fades else ""
+            graph.append(
+                f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[a_voice];"
+                f"[{music_input_index}:a]aresample=48000,atrim=duration={output_duration:.4f},asetpts=PTS-STARTPTS,"
+                f"volume={music_volume:.6f},{fade_chain}apad=pad_dur=2[a_music];"
+                "[a_voice][a_music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=0.95:level=false[aout]"
+            )
+        else:
+            graph.append(
+                f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[a_voice];"
+                f"[{music_input_index}:a]aresample=48000,volume={music_volume:.3f},apad=pad_dur=2[a_music];"
+                "[a_voice][a_music]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            )
+    else:
+        graph.append(f"[{audio_input_index}:a]aresample=48000,apad=pad_dur=2[aout]")
+    if progress:
+        progress("Montando transições, áudio e legendas…", 0.95)
+    _run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *inputs,
+        "-filter_complex", ";".join(graph), "-map", f"[{video_label}]", "-map", "[aout]",
+        "-t", f"{output_duration:.4f}", *_encoder_args(encoder, crf, preset),
+        "-c:a", "aac", "-b:a", "192k", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out),
+    ])
+    return out
 
 
 def render_video(
@@ -289,7 +700,7 @@ def render_video(
     use_encoder = encoder_mode or os.getenv("VIDEO_ENCODER", "auto")
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    work = out.parent / "render_work"
+    work = out.parent / f"{out.stem}_render_work"
     work.mkdir(parents=True, exist_ok=True)
 
     scene_durations = [max(float(value), 0.4) for value in scene_audio_durations]
@@ -341,11 +752,26 @@ def render_video(
             source = Path(shot.image_path)
             motion_name = resolve_motion(shot.motion, visual_index)
             duration = shot.duration
+            camera_frames = max(1, round(duration * fps))
             if shot_index == len(scene.shots) - 1:
                 duration += scene_clip_duration - scene_durations[scene_index]
             frames = max(2, round(duration * fps))
             shot_clip = work / f"scene_{scene_index:02d}_shot_{shot_index:02d}.mp4"
-            if image_effects_enabled:
+            if shot.camera is not None:
+                _render_explicit_camera_clip(
+                    source,
+                    shot_clip,
+                    camera=shot.camera,
+                    output_width=width,
+                    output_height=height,
+                    fps=fps,
+                    total_frames=frames,
+                    camera_frames=camera_frames,
+                    encoder_mode=use_encoder,
+                    crf=crf,
+                    preset=preset,
+                )
+            elif image_effects_enabled:
                 zoom, x_expr, y_expr = _motion_expressions(
                     motion_name,
                     frames,
@@ -368,12 +794,13 @@ def render_video(
                     f"crop={width}:{height},fps={fps},"
                     f"trim=duration={duration:.4f},setpts=PTS-STARTPTS,format=yuv420p"
                 )
-            _run([
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                "-loop", "1", "-framerate", str(fps), "-t", f"{duration:.4f}", "-i", str(source),
-                "-vf", vf, "-an", "-t", f"{duration:.4f}", *_encoder_args(use_encoder, crf, preset),
-                "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(shot_clip),
-            ])
+            if shot.camera is None:
+                _run([
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-loop", "1", "-framerate", str(fps), "-t", f"{duration:.4f}", "-i", str(source),
+                    "-vf", vf, "-an", "-t", f"{duration:.4f}", *_encoder_args(use_encoder, crf, preset),
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(shot_clip),
+                ])
             rendered_shots.append(shot_clip)
             visual_index += 1
 

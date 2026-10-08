@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 import re
 from typing import Literal
@@ -82,12 +83,43 @@ class Soundtrack(BaseModel):
     volume_percent: int = Field(ge=0, le=12, strict=True)
 
 
+class CameraPose(BaseModel):
+    """A camera focus and zoom expressed in EXIF-corrected image coordinates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    focus_x: float = Field(ge=0.0, le=1.0, strict=True)
+    focus_y: float = Field(ge=0.0, le=1.0, strict=True)
+    zoom: float = Field(ge=1.0, le=1.35, strict=True)
+
+    @field_validator("focus_x", "focus_y", "zoom", mode="before")
+    @classmethod
+    def finite_number(cls, value: object) -> object:
+        """Reject coercions, booleans and JSON NaN/Infinity values explicitly."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("o valor da câmera deve ser um número finito")
+        if not math.isfinite(float(value)):
+            raise ValueError("o valor da câmera deve ser finito")
+        return value
+
+
+class Camera(BaseModel):
+    """Explicit camera keyframes for a scene or a visual shot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start: CameraPose
+    end: CameraPose
+    easing: Literal["quintic"] = "quintic"
+
+
 class Shot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     image_path: str = Field(min_length=1, max_length=255)
     start_phrase: str | None = Field(default=None, max_length=400)
     motion: Motion | None = None
+    camera: Camera | None = None
 
     @field_validator("image_path")
     @classmethod
@@ -115,6 +147,7 @@ class Scene(BaseModel):
     narration: str = Field(min_length=1, max_length=1200)
     image_path: str = Field(min_length=1, max_length=255)
     motion: Motion = "auto"
+    camera: Camera | None = None
     seed: int | None = None
     shots: list[Shot] | None = None
     transition_to_next: SceneTransition | None = None
@@ -144,17 +177,27 @@ class Scene(BaseModel):
                 f"cena {self.id}, plano 1: image_path deve ser exatamente igual ao image_path da cena"
             )
 
-        seen_images: dict[str, int] = {}
+        seen_images: dict[str, list[tuple[int, Camera | None]]] = {}
         previous_start = -1
         sentence_indices = _sentence_word_indices(self.narration)
         for index, shot in enumerate(self.shots):
             image_key = shot.image_path.casefold()
             if image_key in seen_images:
-                raise ValueError(
-                    f"cena {self.id}, plano {index + 1}: image_path repete o plano "
-                    f"{seen_images[image_key] + 1}"
-                )
-            seen_images[image_key] = index
+                current_camera = self.effective_camera(shot)
+                for previous_index, previous_camera in seen_images[image_key]:
+                    if (
+                        previous_camera is None
+                        or current_camera is None
+                        or previous_camera == current_camera
+                    ):
+                        raise ValueError(
+                            f"cena {self.id}, plano {index + 1}: image_path repete o plano "
+                            f"{previous_index + 1}; a reutilização só é aceita com câmeras efetivas "
+                            "explícitas e diferentes"
+                        )
+                seen_images[image_key].append((index, current_camera))
+            else:
+                seen_images[image_key] = [(index, self.effective_camera(shot))]
             if index == 0:
                 continue
             if shot.start_phrase is None or not shot.start_phrase.strip():
@@ -181,7 +224,15 @@ class Scene(BaseModel):
     def visual_shots(self) -> tuple[Shot, ...]:
         if self.shots is not None:
             return tuple(self.shots)
-        return (Shot(image_path=self.image_path, motion=self.motion),)
+        return (Shot(image_path=self.image_path, motion=self.motion, camera=self.camera),)
+
+    def effective_camera(self, shot: Shot) -> Camera | None:
+        """Resolve the contract precedence: shot camera, scene camera, then legacy motion."""
+        return shot.camera if shot.camera is not None else self.camera
+
+    def effective_motion(self, shot: Shot) -> Motion:
+        """Resolve the legacy motion only when no explicit camera is in use."""
+        return shot.motion if shot.motion is not None else self.motion
 
 
 class YouTubeStatus(BaseModel):

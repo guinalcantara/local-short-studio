@@ -277,7 +277,20 @@ def _build_render_timelines(
         if len(images) != len(shots):
             raise ValueError(f"Cena {scene.id}: a quantidade de imagens copiadas não corresponde aos planos.")
         if scene.shots is None:
-            timelines.append(RenderScene((RenderShot(images[0], scene_duration, scene.motion),), scene.id))
+            shot = shots[0]
+            timelines.append(
+                RenderScene(
+                    (
+                        RenderShot(
+                            images[0],
+                            scene_duration,
+                            scene.effective_motion(shot),
+                            scene.effective_camera(shot),
+                        ),
+                    ),
+                    scene.id,
+                )
+            )
             continue
 
         starts = [cue.start]
@@ -309,7 +322,12 @@ def _build_render_timelines(
         timelines.append(
             RenderScene(
                 tuple(
-                    RenderShot(image, duration, shot.motion or scene.motion)
+                    RenderShot(
+                        image,
+                        duration,
+                        scene.effective_motion(shot),
+                        scene.effective_camera(shot),
+                    )
                     for image, duration, shot in zip(images, durations, shots)
                 ),
                 scene.id,
@@ -474,7 +492,11 @@ class ShortPipeline:
             self.progress(f"{len(cues)} blocos sincronizados pelo Whisper.", 0.84)
 
         scene_timelines = None
-        if has_multiple_shots:
+        has_explicit_camera = any(
+            scene.camera is not None or any(shot.camera is not None for shot in scene.visual_shots())
+            for scene in project.scenes
+        )
+        if has_multiple_shots or has_explicit_camera:
             scene_timelines = _build_render_timelines(
                 project,
                 copied_images,

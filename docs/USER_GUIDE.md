@@ -7,14 +7,43 @@ Crie um JSON com `title`, `profile`, `voice`, `speech_speed`, `visual_style`, `c
 - `id`: identificador seguro;
 - `narration`: texto em português brasileiro;
 - `image_path`: basename obrigatório, como `cena_01_gancho.png`;
-- `motion`: `slow_push_in`, `slow_pull_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static` ou `auto`.
+- `motion` opcional legado: `slow_push_in`, `slow_pull_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static` ou `auto`;
+- `camera` opcional, quando o enquadramento precisar de foco e zoom controlados.
 
 O formato legado, sem `shots`, continua usando `image_path` e `motion` como seu único plano. Para mostrar mais de uma imagem durante a mesma fala, acrescente `shots` com 2 a 4 elementos:
 
 - `shots[0].image_path` deve ser exatamente igual ao `image_path` da cena e não usa `start_phrase`;
-- cada plano seguinte usa uma imagem distinta e uma `start_phrase` não vazia, contígua e presente uma única vez na narração;
+- cada plano seguinte usa uma `start_phrase` não vazia, contígua e presente uma única vez na narração;
 - as âncoras seguem a ordem da narração e não atravessam o fim de uma frase;
-- `shot.motion` é opcional; quando ausente, herda o `motion` da cena.
+- `shot.motion` é opcional; quando ausente, herda o `motion` da cena;
+- em regra, cada plano usa uma imagem distinta. A mesma imagem pode ser reutilizada somente dentro da mesma cena, quando os dois planos tiverem câmeras efetivas explícitas e diferentes. Nesse caso, o arquivo ainda aparece uma única vez no ZIP.
+
+### Câmera por cena e por plano
+
+O bloco `camera` pode ficar na cena, para servir como padrão dos planos, ou em um `shot`, para sobrescrever apenas aquele plano. A precedência é:
+
+1. `shot.camera`;
+2. `scene.camera`;
+3. `shot.motion` legado;
+4. `scene.motion` legado.
+
+Uma câmera explícita substitui o movimento legado; o renderer não soma dois movimentos. Use `camera` inteiro, sem valores parciais:
+
+```json
+{
+  "camera": {
+    "start": { "focus_x": 0.50, "focus_y": 0.50, "zoom": 1.00 },
+    "end": { "focus_x": 0.62, "focus_y": 0.38, "zoom": 1.12 },
+    "easing": "quintic"
+  }
+}
+```
+
+`start` e `end` são obrigatórios quando houver `camera`. Em ambos, `focus_x` e `focus_y` são números finitos entre 0 e 1, medidos na imagem original depois da orientação EXIF (esquerda/topo = 0; direita/base = 1); `zoom` é finito entre 1.00 e 1.35 e é relativo ao menor recorte que preenche o quadro vertical. `easing` é opcional, assume `quintic` e `quintic` é o único valor aceito.
+
+Pontos iguais em `start` e `end` produzem um quadro estático. Próximo às bordas, o app limita o recorte aos pixels existentes; a prévia mostra o enquadramento efetivo. A câmera não altera duração da fala, âncoras, cortes, transições ou timestamps de legenda. O controle da interface para desligar movimentos desativa somente os movimentos legados de `motion`: uma `camera` explícita continua definindo o enquadramento.
+
+Para reutilizar a mesma imagem em dois planos, cada plano deve receber uma câmera efetiva explícita — declarada nele ou herdada da cena — e essas câmeras devem ser diferentes. Apenas trocar `motion`, repetir a mesma câmera ou declarar câmera em somente um plano não permite a repetição.
 
 Veja o roteiro real completo em `examples/modelo_projeto.json`.
 
@@ -70,6 +99,16 @@ O ZIP é lido em memória e não é extraído para um caminho controlado pelo ar
 
 Projetos com `shots` mostram um aviso de que o Whisper será necessário. Isso ocorre mesmo com as legendas desmarcadas, pois os timestamps reais das palavras determinam as trocas de imagem.
 
+### Prévia do gancho e revisão por cena
+
+Depois de validar o JSON e o ZIP, use **Prévia do gancho** para renderizar um vídeo real da primeira cena com a voz, as imagens, a câmera, a música e as legendas efetivas. A prévia pode usar 540×960 para revisão rápida ou 1080×1920 para inspeção final; mantém proporção, taxa de quadros e enquadramento do Short final. Ela não aplica a transição para a segunda cena nem acrescenta cauda artificial.
+
+A prévia usa a narração inteira da primeira cena. Se ela passar de aproximadamente seis segundos, a interface mostra a duração e sugere revisar o gancho, sem cortar a fala. O vídeo de prévia é identificado como tal, pode ser baixado e nunca aparece como candidato de publicação no YouTube.
+
+O projeto salvo pode ser retomado depois de reiniciar o app ou o container. Na revisão por cena, altere texto, planos, imagens, âncoras, câmera, transição, legendas ou música e gere novamente o resultado. O app reaproveita áudio, alinhamento e renders válidos sempre que a alteração não os invalida: trocar imagem, câmera, âncora, transição, legenda ou música não deve sintetizar novamente a voz; editar texto, voz ou velocidade da cena refaz somente seu áudio e suas dependências. Uma regeneração voluntária de voz cria uma nova realização para a cena escolhida.
+
+Antes de renderizar, qualquer edição de texto que torne uma `start_phrase` ausente, ambígua ou fora de ordem precisa ser corrigida. A interface não desloca cortes para tempos estimados.
+
 ## 4. Mecanismo de voz, música e legendas
 
 No seletor **Mecanismo de narração**, escolha uma alternativa para cada geração. Essa escolha é da interface e não altera o JSON do projeto. A narração completa de cada cena é sintetizada como um bloco contínuo; a pontuação orienta as pausas e não é acrescentada uma pausa fixa entre frases.
@@ -102,11 +141,13 @@ O campo **Áudio de referência da sua voz** é opcional. Para reproduzir a iden
 
 ## 5. Saída
 
-O pipeline valida o ZIP, copia somente as imagens usadas para `output/<execução>/images/`, gera um WAV por cena com o mecanismo escolhido em CUDA e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg. Planos da mesma cena usam cortes secos nos instantes alinhados; entre cenas, o JSON pode escolher corte seco, dissolvência ou passagem pelo preto. Durante a montagem, a barra informa a cena atual, a quantidade de planos, as cenas concluídas e a etapa final de transições/áudio.
+O pipeline valida o ZIP, copia somente as imagens usadas para o projeto salvo, gera ou reaproveita um WAV por cena com o mecanismo escolhido em CUDA e então monta o MP4 vertical 1080×1920 a 30 fps com FFmpeg. Planos da mesma cena usam cortes secos nos instantes alinhados; entre cenas, o JSON pode escolher corte seco, dissolvência ou passagem pelo preto. Durante a montagem, a barra informa a cena atual, a quantidade de planos, as cenas concluídas e a etapa final de transições/áudio.
 
 A duração visual do fade é arredondada para frames. Se uma duração explicitamente informada ocupar quase todo o primeiro plano da cena seguinte, a geração para com uma mensagem da fronteira problemática. Em projetos legados, o app pode encurtar a dissolvência implícita ou usar corte seco para preservar o plano.
 
-O arquivo `project.json` preserva os blocos `soundtrack` e `youtube`, se existirem. A escolha de música realmente usada fica em `soundtrack_used.json`, com ganho, LUFS e metadados disponíveis, sem caminho do host. Quando um MP4 é publicado, `youtube_publication.json` registra o ID, URL, canal, horário, hash do vídeo e, se houver, somente o ID, idioma, formato e hash da faixa de legenda — nunca credenciais.
+O arquivo `project.json` preserva os blocos `soundtrack`, `youtube` e as câmeras efetivamente editadas. A exportação também oferece um ZIP reconstruído somente com as imagens referenciadas pelo projeto efetivo. Configurações de execução, cache, hash de referência vocal e outros dados locais ficam no manifesto persistente, não no ZIP nem no JSON portátil; caminhos privados, áudios pessoais, credenciais e tokens nunca são exportados.
+
+A escolha de música realmente usada fica em `soundtrack_used.json`, com ganho, LUFS e metadados disponíveis, sem caminho do host. Quando um MP4 é publicado, `youtube_publication.json` registra o ID, URL, canal, horário, hash do vídeo e, se houver, somente o ID, idioma, formato e hash da faixa de legenda — nunca credenciais. Ao gerar um MP4 novo, a interface exige nova revisão e confirmação antes de qualquer publicação; uma prévia ou variante não reutiliza a confirmação de outro arquivo.
 
 ## 6. Publicar no YouTube
 
