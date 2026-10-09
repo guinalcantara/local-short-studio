@@ -13,8 +13,17 @@ Gere Shorts verticais localmente a partir de um roteiro JSON e de um ZIP com uma
 5. Escolha Kokoro ou Chatterbox PT-BR, confirme a música efetiva e configure as legendas.
 6. Opcionalmente, gere a **Prévia do gancho** para conferir a primeira cena com voz, imagens, câmera, música e legendas reais.
 7. Revise cenas, planos, âncoras e enquadramentos; depois clique em **Gerar Short** para produzir o MP4 final.
+8. Em **Resultados do canal**, cadastre manualmente dados cumulativos do YouTube Studio ou escolha explicitamente acompanhar o MP4 final da sessão.
 
 O app não gera imagens e não usa ComfyUI no fluxo padrão. O serviço ComfyUI antigo permanece somente como perfil Docker opcional para referência futura.
+
+## Resultados do canal
+
+O painel local **Resultados do canal** tem uma aba própria e grava seus snapshots em `input/analytics/performance.sqlite3`. Com uma conta OAuth selecionada, **Sincronizar resultados do YouTube** consulta explicitamente os vídeos recentes do canal e métricas não monetárias disponíveis; abrir a aba nunca faz coleta, renderização ou publicação automática. O cadastro manual continua disponível para complementar dados ausentes.
+
+Para sincronizar, habilite a **YouTube Analytics API** no mesmo projeto Google Cloud e reconecte contas já existentes para conceder `yt-analytics.readonly`. Não é solicitada permissão de receita. A disponibilidade e o atraso das métricas dependem do YouTube; campos não retornados continuam desconhecidos, nunca zero.
+
+Para comparar 48 horas, 7 dias ou um horizonte personalizado, informe a data/hora de publicação. A interface escolhe no máximo uma coleta por Short, dentro da tolerância exibida, e mostra idade real, tamanho da amostra e medianas. `inscritos por 1.000 visualizações engajadas` só existe quando os dois dados estão presentes e as engajadas são maiores que zero. As leituras são descritivas, não previsões de viralização nem prova de causalidade.
 
 ## Requisitos
 

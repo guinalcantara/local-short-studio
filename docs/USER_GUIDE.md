@@ -169,6 +169,16 @@ Os limites do ZIP ficam em `.env` ou `config/settings.example.env`:
 - `MUSIC_MAX_CATALOG_BYTES`;
 - `MUSIC_MAX_TRACK_BYTES`.
 
+## Resultados do canal
+
+Abra a aba **Resultados do canal** para sincronizar explicitamente os vídeos recentes da conta OAuth selecionada, registrar um Short antigo manualmente ou clicar em **Acompanhar este Short** depois que um MP4 final estiver disponível na sessão. A sincronização nunca publica, renderiza ou cadastra automaticamente ao abrir a aba; o segundo fluxo apenas pré-preenche fatos comprovados e pede confirmação. O banco local fica em `input/analytics/performance.sqlite3` e pode ser preservado mesmo se pastas de render forem removidas.
+
+Para a sincronização online, habilite a YouTube Analytics API no projeto Google Cloud e reconecte a conta, pois o consentimento inclui `yt-analytics.readonly`. A coleta é sob demanda e pode ter atrasos ou valores indisponíveis conforme o YouTube; esses campos continuam como desconhecidos.
+
+No YouTube Studio, copie os totais cumulativos na data/hora da coleta: visualizações, visualizações engajadas, inscritos ganhos, percentual que continuou assistindo, média de segundos e percentual médio assistido. Deixe um campo vazio quando ele for desconhecido — zero é um valor diferente. Use 48h, 7d ou um alvo personalizado e informe a publicação com fuso America/Sao_Paulo para tornar a idade real comparável. O percentual médio pode passar de 100% por replays; o percentual que continuou assistindo fica entre 0 e 100.
+
+As tabelas preservam o histórico completo. Na comparação, a interface escolhe no máximo uma coleta por Short, dentro da tolerância exibida, e deixa medições sem idade ou fora da tolerância fora das medianas. `inscritos/1.000 engajadas` é calculado somente como inscritos ganhos dividido por visualizações engajadas; não substitui o denominador por visualizações totais. Os textos de sugestão não são previsões nem provas de causalidade.
+
 ## 8. Serviço legado opcional
 
 ComfyUI/Stable Diffusion não participa da operação normal. Se for necessário investigá-lo em uma tarefa futura, ele está no perfil `legacy-image`:

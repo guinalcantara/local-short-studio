@@ -26,7 +26,9 @@ from app.schemas import VideoProject
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 YOUTUBE_READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
 YOUTUBE_CAPTIONS_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
-YOUTUBE_SCOPES = (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READONLY_SCOPE, YOUTUBE_CAPTIONS_SCOPE)
+YOUTUBE_ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
+YOUTUBE_PUBLICATION_SCOPES = (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READONLY_SCOPE, YOUTUBE_CAPTIONS_SCOPE)
+YOUTUBE_SCOPES = (*YOUTUBE_PUBLICATION_SCOPES, YOUTUBE_ANALYTICS_SCOPE)
 _ACCOUNT_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _ACCOUNT_STORE_VERSION = 1
 _MAX_CAPTION_BYTES = 100 * 1024 * 1024
@@ -229,17 +231,18 @@ def _save_account(account: YouTubeAccount, credentials: Credentials) -> None:
         _token_path(account.id).write_text(credentials.to_json() + "\n", encoding="utf-8")
 
 
-def _credentials_for_account(account: YouTubeAccount) -> Credentials:
+def _credentials_for_account(account: YouTubeAccount, required_scopes: tuple[str, ...] = YOUTUBE_PUBLICATION_SCOPES) -> Credentials:
     token_path = _token_path(account.id)
     if not token_path.is_file():
         raise YouTubeError(f"O token local da conta '{account.label}' não foi encontrado.")
     try:
-        credentials = Credentials.from_authorized_user_file(str(token_path), YOUTUBE_SCOPES)
+        credentials = Credentials.from_authorized_user_file(str(token_path), required_scopes)
     except (OSError, ValueError) as exc:
         raise YouTubeError(f"O token local da conta '{account.label}' não pôde ser lido.") from exc
-    if not credentials.has_scopes(YOUTUBE_SCOPES):
+    if not credentials.has_scopes(required_scopes):
+        extra = " e de leitura analítica" if YOUTUBE_ANALYTICS_SCOPE in required_scopes else ""
         raise YouTubeError(
-            f"A conta '{account.label}' precisa ser conectada novamente para conceder também a permissão de legendas."
+            f"A conta '{account.label}' precisa ser conectada novamente para conceder as permissões necessárias{extra}."
         )
     try:
         if credentials.expired and credentials.refresh_token:
@@ -254,6 +257,82 @@ def _credentials_for_account(account: YouTubeAccount) -> Credentials:
 
 def _youtube_service(credentials: Credentials):
     return build("youtube", "v3", credentials=credentials, cache_discovery=False)
+
+
+def _youtube_analytics_service(credentials: Credentials):
+    return build("youtubeAnalytics", "v2", credentials=credentials, cache_discovery=False)
+
+
+@dataclass(frozen=True)
+class YouTubePerformanceVideo:
+    video_id: str
+    title: str
+    channel_title: str
+    published_at: str | None
+    duration_seconds: float | None
+    views: int | None
+    engaged_views: int | None
+    subscribers_gained: int | None
+    average_watch_seconds: float | None
+    average_watch_percent: float | None
+
+
+def _duration_seconds(value: str | None) -> float | None:
+    if not value:
+        return None
+    match = re.fullmatch(r"P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?", value)
+    if not match:
+        return None
+    days, hours, minutes, seconds = match.groups()
+    return float((int(days or 0) * 86400) + (int(hours or 0) * 3600) + (int(minutes or 0) * 60) + float(seconds or 0))
+
+
+def fetch_youtube_performance(account_id: str, max_results: int = 50) -> tuple[YouTubePerformanceVideo, ...]:
+    """Fetch explicit, non-monetary snapshots. It never uploads or writes local data."""
+    if not 1 <= max_results <= 100:
+        raise YouTubeError("O limite de sincronização deve ficar entre 1 e 100 vídeos.")
+    account = get_youtube_account(account_id)
+    credentials = _credentials_for_account(account, YOUTUBE_SCOPES)
+    try:
+        data = _youtube_service(credentials)
+        channel = data.channels().list(part="contentDetails", id=account.channel_id).execute().get("items", [])
+        if not channel:
+            raise YouTubeError("Não foi possível acessar o canal da conta selecionada.")
+        uploads = str(channel[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads", ""))
+        if not uploads:
+            raise YouTubeError("O YouTube não retornou a lista de uploads deste canal.")
+        items = data.playlistItems().list(part="contentDetails", playlistId=uploads, maxResults=min(max_results, 50)).execute().get("items", [])
+        ids = [str(item.get("contentDetails", {}).get("videoId", "")) for item in items]
+        ids = [value for value in ids if value]
+        videos = data.videos().list(part="snippet,contentDetails,statistics", id=",".join(ids), maxResults=len(ids)).execute().get("items", []) if ids else []
+        analytics = _youtube_analytics_service(credentials)
+        today = datetime.now(UTC).date().isoformat()
+        result: list[YouTubePerformanceVideo] = []
+        for video in videos:
+            video_id = str(video.get("id", "")); snippet = video.get("snippet", {})
+            published_at = str(snippet.get("publishedAt", "")).strip() or None
+            start_date = (published_at or datetime.now(UTC).isoformat())[:10]
+            metrics: dict[str, Any] = {}
+            try:
+                report = analytics.reports().query(ids="channel==MINE", startDate=start_date, endDate=today, metrics="views,engagedViews,subscribersGained,averageViewDuration,averageViewPercentage", filters=f"video=={video_id}").execute()
+                headers = [str(item.get("name", "")) for item in report.get("columnHeaders", [])]
+                rows = report.get("rows", [])
+                metrics = dict(zip(headers, rows[0])) if rows else {}
+            except HttpError:
+                # A video with unavailable analytics remains importable with known Data API fields.
+                metrics = {}
+            statistics = video.get("statistics", {})
+            def whole(value: Any) -> int | None:
+                try: return int(value) if value is not None else None
+                except (TypeError, ValueError): return None
+            def number(value: Any) -> float | None:
+                try: return float(value) if value is not None else None
+                except (TypeError, ValueError): return None
+            result.append(YouTubePerformanceVideo(video_id=video_id, title=str(snippet.get("title", "Short sem título")), channel_title=account.channel_title, published_at=published_at, duration_seconds=_duration_seconds(video.get("contentDetails", {}).get("duration")), views=whole(metrics.get("views", statistics.get("viewCount"))), engaged_views=whole(metrics.get("engagedViews")), subscribers_gained=whole(metrics.get("subscribersGained")), average_watch_seconds=number(metrics.get("averageViewDuration")), average_watch_percent=number(metrics.get("averageViewPercentage"))))
+        return tuple(result)
+    except HttpError as exc:
+        detail = getattr(exc, "reason", None) or "A API do YouTube recusou a consulta."
+        raise YouTubeError(f"Não foi possível sincronizar os resultados: {detail}") from exc
 
 
 def _channel_from_credentials(credentials: Credentials) -> tuple[str, str]:

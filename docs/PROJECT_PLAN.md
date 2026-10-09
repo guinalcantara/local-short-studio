@@ -69,6 +69,12 @@ O bloco opcional `youtube` contém os metadados validados para a publicação. D
 
 `short_vertical` é ativo: 1080×1920, 30 fps, H.264/AAC. `video_landscape` continua configurado e desativado para permitir a evolução futura sem mudar o contrato de cenas.
 
+## Resultados locais do canal
+
+O painel **Resultados do canal** é uma aba separada da produção. Ele armazena em `input/analytics/performance.sqlite3` cadastros locais, snapshots cumulativos e hipóteses editoriais, podendo sincronizar sob demanda dados não monetários do canal OAuth explicitamente escolhido. Não altera `VideoProject`, ZIP, cache, MP4 ou registros de publicação; uma falha no painel não bloqueia a renderização nem dispara upload.
+
+As comparações usam uma medição por Short, horizonte declarado e idade real calculada a partir da publicação. Medianas e tamanho de amostra permanecem visíveis, e sugestões são somente descritivas: o produto não promete viralização nem atribui causalidade.
+
 ## Critérios da versão
 
 1. `docker compose up --build -d` inicia o app sem ComfyUI.
