@@ -14,7 +14,6 @@ from app.image_archive import ImageZipError, ImageZipValidation, validate_image_
 from app.incremental import WorkspacePipeline
 from app.music_catalog import MusicCatalog, MusicCatalogError, load_music_catalog
 from app.pipeline import ShortPipeline, project_image_paths
-from app.performance_ui import render_channel_performance
 from app.renderer import camera_crop_rect
 from app.schemas import Camera, VideoProject, example_project
 from app.voices import KOKORO_VOICES, TTS_ENGINES, normalize_voice, tts_engine_label, voice_label
@@ -235,29 +234,6 @@ def render_youtube_publication(video_path: Path | None, project: VideoProject | 
 
 
 st.set_page_config(page_title="Local Short Studio", page_icon="🎬", layout="wide")
-
-# Mantém a geração inteira na primeira aba sem duplicar seu fluxo legado.
-# O proxy preserva session_state do módulo Streamlit e direciona os widgets para
-# o container da aba de geração; a aba de resultados usa seu próprio contexto.
-_streamlit_module = st
-generation_tab, results_tab = _streamlit_module.tabs(["Gerar Short", "Resultados do canal"])
-
-
-class _TabStreamlitProxy:
-    def __init__(self, container, module) -> None:
-        self._container = container
-        self._module = module
-
-    def __getattr__(self, name: str):
-        if name == "session_state":
-            return self._module.session_state
-        try:
-            return getattr(self._container, name)
-        except AttributeError:
-            return getattr(self._module, name)
-
-
-st = _TabStreamlitProxy(generation_tab, _streamlit_module)
 st.title("Local Short Studio")
 st.write("Transforme um roteiro e um ZIP de imagens em narração e um Short vertical local.")
 st.caption("As imagens são preparadas previamente e enviadas com o roteiro; Kokoro usa CUDA para a voz e FFmpeg monta o MP4.")
@@ -961,13 +937,6 @@ if st.button("Gerar Short", type="primary", disabled=not can_generate, use_conta
         progress_bar.progress(1.0, text="Pronto")
         st.session_state["youtube_output_video_path"] = str(output_video)
         st.session_state["youtube_output_project_json"] = project.to_json()
-        st.session_state["performance_output_effective"] = {
-            "tts_engine": tts_engine,
-            "chatterbox": chatterbox_settings or {},
-            "music_source": music_source,
-            "catalog_track_id": selected_catalog_track_id,
-            "music_volume_percent": music_volume_percent,
-        }
         st.video(str(output_video), width=VIDEO_PREVIEW_WIDTH)
         st.download_button(
             "Baixar MP4",
@@ -1009,15 +978,6 @@ if stored_video_path and stored_project_json:
             st.session_state.pop("youtube_output_video_path", None)
             st.session_state.pop("youtube_output_project_json", None)
             stored_video = None
-
-_streamlit_module.divider()
-with results_tab:
-    render_channel_performance(
-        input_root,
-        available_video=stored_video,
-        project=stored_project,
-        effective=st.session_state.get("performance_output_effective") or {},
-    )
 
 st.divider()
 render_youtube_publication(stored_video, stored_project or parsed)

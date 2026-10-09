@@ -4,13 +4,7 @@ Este documento explica como conectar localmente a conta que publicará os vídeo
 
 ## Chave de API não publica vídeos
 
-Uma chave de API identifica o projeto e atende requisições públicas, mas não concede acesso a um canal nem autoriza `videos.insert` ou `captions.insert`. Para enviar um Short é obrigatório autenticar o proprietário da conta pelo **OAuth 2.0**. O app pede `youtube.upload` para o MP4, `youtube.readonly` para identificar o canal, `youtube.force-ssl` para enviar a faixa de legenda opcional e `yt-analytics.readonly` para a sincronização manual de resultados não monetários.
-
-## Sincronização de resultados
-
-Ative a **YouTube Analytics API** no mesmo projeto Google Cloud que contém o cliente OAuth. Depois reconecte cada conta desejada: tokens antigos não incluem a nova leitura analítica. Na aba **Resultados do canal**, escolha explicitamente uma conta e use **Sincronizar resultados do YouTube**. A operação não envia MP4s, não confirma uploads e não consulta receita.
-
-O YouTube pode atrasar ou omitir métricas para determinados vídeos e períodos. O app salva a hora e a origem da coleta, deixa valores indisponíveis como desconhecidos e preserva suas anotações editoriais locais.
+Uma chave de API identifica o projeto e atende requisições públicas, mas não concede acesso a um canal nem autoriza `videos.insert` ou `captions.insert`. Para enviar um Short é obrigatório autenticar o proprietário da conta pelo **OAuth 2.0**. O app pede `youtube.upload` para o MP4, `youtube.readonly` para identificar o canal e `youtube.force-ssl` para enviar a faixa de legenda opcional.
 
 ## Preparação no Google Cloud
 

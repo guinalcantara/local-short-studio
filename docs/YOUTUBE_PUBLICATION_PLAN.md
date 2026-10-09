@@ -50,7 +50,7 @@ URL/ID retornado, estado de processamento e registro local da publicação
 ## Implementação realizada
 
 1. **Dependências e configuração segura:** bibliotecas oficiais de cliente/OAuth, `input/youtube/` ignorado pelo Git e callback Docker local na porta `8765` (configurável por `YOUTUBE_OAUTH_PORT`).
-2. **Contas OAuth:** conexão pelo navegador, identificação de canal, renovação de token, listagem de contas e remoção do token local. O escopo adicional `youtube.readonly` serve para identificar o canal; `youtube.upload` autoriza o envio; `yt-analytics.readonly` permite exclusivamente a sincronização manual e não monetária de resultados.
+2. **Contas OAuth:** conexão pelo navegador, identificação de canal, renovação de token, listagem de contas e remoção do token local. O escopo adicional `youtube.readonly` serve somente para identificar o canal na lista; `youtube.upload` autoriza o envio.
 3. **Camada de publicação:** mapeamento do JSON para `snippet` e `status` do `videos.insert`, upload resumível do MP4 e `captions.insert` opcional com SRT ou VTT local. O MP4 é registrado antes da legenda para evitar reenvio se a segunda etapa falhar; a tentativa posterior usa o mesmo ID de vídeo.
 4. **Interface e confirmações:** seletor inicialmente vazio, revisão de metadados, confirmação obrigatória, aviso sobre processamento e bloqueio contra reenvio do mesmo MP4.
 5. **Testes:** cobertura para mapeamento de metadados, armazenamento local de conta, remoção de token, upload resumível, conversão SRT→VTT, envio de legenda e proteção contra duplicidade.
