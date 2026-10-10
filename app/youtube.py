@@ -26,7 +26,10 @@ from app.schemas import VideoProject
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 YOUTUBE_READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
 YOUTUBE_CAPTIONS_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
+YOUTUBE_ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
 YOUTUBE_SCOPES = (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READONLY_SCOPE, YOUTUBE_CAPTIONS_SCOPE)
+YOUTUBE_ANALYTICS_SCOPES = (YOUTUBE_READONLY_SCOPE, YOUTUBE_ANALYTICS_SCOPE)
+YOUTUBE_OAUTH_SCOPES = (*YOUTUBE_SCOPES, YOUTUBE_ANALYTICS_SCOPE)
 _ACCOUNT_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _ACCOUNT_STORE_VERSION = 1
 _MAX_CAPTION_BYTES = 100 * 1024 * 1024
@@ -229,17 +232,20 @@ def _save_account(account: YouTubeAccount, credentials: Credentials) -> None:
         _token_path(account.id).write_text(credentials.to_json() + "\n", encoding="utf-8")
 
 
-def _credentials_for_account(account: YouTubeAccount) -> Credentials:
+def _credentials_for_account(
+    account: YouTubeAccount,
+    required_scopes: tuple[str, ...] = YOUTUBE_SCOPES,
+) -> Credentials:
     token_path = _token_path(account.id)
     if not token_path.is_file():
         raise YouTubeError(f"O token local da conta '{account.label}' não foi encontrado.")
     try:
-        credentials = Credentials.from_authorized_user_file(str(token_path), YOUTUBE_SCOPES)
+        credentials = Credentials.from_authorized_user_file(str(token_path), required_scopes)
     except (OSError, ValueError) as exc:
         raise YouTubeError(f"O token local da conta '{account.label}' não pôde ser lido.") from exc
-    if not credentials.has_scopes(YOUTUBE_SCOPES):
+    if not credentials.has_scopes(required_scopes):
         raise YouTubeError(
-            f"A conta '{account.label}' precisa ser conectada novamente para conceder também a permissão de legendas."
+            f"A conta '{account.label}' precisa ser conectada novamente para conceder as permissões solicitadas."
         )
     try:
         if credentials.expired and credentials.refresh_token:
@@ -254,6 +260,22 @@ def _credentials_for_account(account: YouTubeAccount) -> Credentials:
 
 def _youtube_service(credentials: Credentials):
     return build("youtube", "v3", credentials=credentials, cache_discovery=False)
+
+
+def _youtube_analytics_service(credentials: Credentials):
+    return build("youtubeAnalytics", "v2", credentials=credentials, cache_discovery=False)
+
+
+def youtube_read_services(account_id: str) -> tuple[YouTubeAccount, Any, Any]:
+    """Return Data and Analytics API clients for an explicit local account.
+
+    Publication retains its existing upload scope requirements.  An older
+    account therefore keeps working for uploads and only needs reconnection
+    when the user explicitly requests an analytics archive.
+    """
+    account = get_youtube_account(account_id)
+    credentials = _credentials_for_account(account, YOUTUBE_ANALYTICS_SCOPES)
+    return account, _youtube_service(credentials), _youtube_analytics_service(credentials)
 
 
 def _channel_from_credentials(credentials: Credentials) -> tuple[str, str]:
@@ -284,7 +306,7 @@ def _oauth_flow() -> InstalledAppFlow:
             f"{client_secret} e tente novamente."
         )
     try:
-        flow = InstalledAppFlow.from_client_secrets_file(str(client_secret), scopes=YOUTUBE_SCOPES)
+        flow = InstalledAppFlow.from_client_secrets_file(str(client_secret), scopes=YOUTUBE_OAUTH_SCOPES)
     except (OSError, ValueError) as exc:
         raise YouTubeConfigurationError("O arquivo de cliente OAuth do YouTube é inválido.") from exc
     flow.redirect_uri = _callback_url()

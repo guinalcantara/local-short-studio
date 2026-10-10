@@ -18,6 +18,7 @@ from app.renderer import camera_crop_rect
 from app.schemas import Camera, VideoProject, example_project
 from app.voices import KOKORO_VOICES, TTS_ENGINES, normalize_voice, tts_engine_label, voice_label
 from app.workspace import ProjectWorkspace, WorkspaceError, file_sha256
+from app.youtube_archive import YouTubeArchiveError, collect_youtube_channel_archive
 from app.youtube import (
     YouTubeAlreadyPublishedError,
     YouTubeError,
@@ -38,7 +39,7 @@ VIDEO_PREVIEW_WIDTH = 360
 
 def render_youtube_publication(video_path: Path | None, project: VideoProject | None) -> None:
     st.subheader("Publicar no YouTube")
-    st.caption("Você pode conectar e selecionar contas antes de gerar o vídeo. O upload só acontece após a confirmação abaixo.")
+    st.caption("Selecione uma conta já conectada. O upload só acontece após a confirmação abaixo; gerencie conexões no menu Contas do YouTube.")
 
     try:
         accounts = list_youtube_accounts()
@@ -63,69 +64,6 @@ def render_youtube_publication(video_path: Path | None, project: VideoProject | 
         help="Nenhuma conta é selecionada automaticamente. Escolha o canal que receberá este MP4.",
     )
     selected_account = accounts_by_id.get(selected_account_id)
-
-    authorization_state = st.session_state.get("youtube_authorization_state")
-    authorization = (
-        youtube_authorization_status(authorization_state)
-        if authorization_state
-        else None
-    )
-    if authorization is None:
-        authorization = pending_youtube_authorization()
-        if authorization is not None:
-            st.session_state["youtube_authorization_state"] = authorization.state
-
-    with st.expander("Conectar ou remover contas do YouTube", expanded=not accounts):
-        if authorization is not None and authorization.status == "pending":
-            st.info("Há uma conexão do YouTube aguardando conclusão. Conclua o login ou cancele-a para iniciar outra.")
-            st.link_button("Abrir autorização do Google", authorization.authorization_url)
-            action_left, action_right = st.columns(2)
-            if action_left.button("Atualizar após concluir o login", key="youtube_refresh_authorization"):
-                st.rerun()
-            if action_right.button("Cancelar autorização pendente", key="youtube_cancel_authorization"):
-                try:
-                    cancel_youtube_authorization(authorization.state)
-                    st.session_state.pop("youtube_authorization_state", None)
-                    st.rerun()
-                except YouTubeError as exc:
-                    st.error(f"Não foi possível cancelar a autorização: {exc}")
-        elif authorization is not None and authorization.status == "complete" and authorization.account is not None:
-            st.session_state.pop("youtube_authorization_state", None)
-            st.success(f"Conta conectada: {authorization.account.display_name}")
-            st.rerun()
-        elif authorization is not None:
-            st.session_state.pop("youtube_authorization_state", None)
-            st.error(authorization.error or "A conexão com o YouTube não foi concluída.")
-
-        if not is_oauth_configured():
-            st.info(
-                "Para conectar uma conta, coloque o JSON do cliente OAuth em "
-                "`input/youtube/client_secret.json` e reconstrua/inicie o app."
-            )
-        elif authorization is None or authorization.status != "pending":
-            label = st.text_input(
-                "Apelido local da conta (opcional)",
-                placeholder="Ex.: Canal de ciência",
-                key="youtube_new_account_label",
-                help="Este apelido aparece apenas neste computador; o título do canal vem da conta autorizada.",
-            )
-            if st.button("Conectar nova conta", key="youtube_connect_account"):
-                try:
-                    authorization = start_youtube_authorization(label)
-                    st.session_state["youtube_authorization_state"] = authorization.state
-                    st.rerun()
-                except YouTubeError as exc:
-                    st.error(f"Não foi possível iniciar a conexão: {exc}")
-
-        if selected_account is not None:
-            if st.button("Remover conexão local desta conta", key="youtube_remove_account"):
-                try:
-                    remove_youtube_account(selected_account.id)
-                    st.session_state[selected_key] = ""
-                    st.success("A conexão local foi removida. Para revogar o acesso no Google, use a página de conexões da conta.")
-                    st.rerun()
-                except YouTubeError as exc:
-                    st.error(f"Não foi possível remover a conexão: {exc}")
 
     if project is None:
         st.info("Envie um projeto JSON válido para revisar os metadados e habilitar a publicação depois da geração.")
@@ -233,7 +171,142 @@ def render_youtube_publication(video_path: Path | None, project: VideoProject | 
             st.error(f"A publicação não foi concluída: {exc}")
 
 
+def render_youtube_accounts() -> None:
+    st.title("Contas do YouTube")
+    st.caption("Conecte, reconecte ou remova somente as credenciais locais deste computador.")
+    try:
+        accounts = list_youtube_accounts()
+    except YouTubeError as exc:
+        st.error(f"Não foi possível carregar as contas do YouTube: {exc}")
+        accounts = ()
+
+    if accounts:
+        st.subheader("Contas conectadas")
+        for account in accounts:
+            st.write(f"- **{account.label}** — {account.channel_title}")
+    else:
+        st.info("Nenhuma conta conectada neste computador.")
+
+    authorization_state = st.session_state.get("youtube_authorization_state")
+    authorization = youtube_authorization_status(authorization_state) if authorization_state else None
+    if authorization is None:
+        authorization = pending_youtube_authorization()
+        if authorization is not None:
+            st.session_state["youtube_authorization_state"] = authorization.state
+
+    st.divider()
+    st.subheader("Conectar ou reconectar")
+    if authorization is not None and authorization.status == "pending":
+        st.info("Há uma conexão aguardando conclusão. Conclua o login ou cancele-a antes de iniciar outra.")
+        st.link_button("Abrir autorização do Google", authorization.authorization_url)
+        left, right = st.columns(2)
+        if left.button("Atualizar após concluir o login", key="youtube_refresh_authorization"):
+            st.rerun()
+        if right.button("Cancelar autorização pendente", key="youtube_cancel_authorization"):
+            try:
+                cancel_youtube_authorization(authorization.state)
+                st.session_state.pop("youtube_authorization_state", None)
+                st.rerun()
+            except YouTubeError as exc:
+                st.error(f"Não foi possível cancelar a autorização: {exc}")
+    elif authorization is not None and authorization.status == "complete" and authorization.account is not None:
+        st.session_state.pop("youtube_authorization_state", None)
+        st.success(f"Conta conectada: {authorization.account.display_name}")
+        st.rerun()
+    elif authorization is not None:
+        st.session_state.pop("youtube_authorization_state", None)
+        st.error(authorization.error or "A conexão com o YouTube não foi concluída.")
+
+    if not is_oauth_configured():
+        st.info("Para conectar uma conta, coloque o JSON do cliente OAuth em `input/youtube/client_secret.json` e reconstrua/inicie o app.")
+    elif authorization is None or authorization.status != "pending":
+        label = st.text_input(
+            "Apelido local da conta (opcional)",
+            placeholder="Ex.: Canal de ciência",
+            key="youtube_new_account_label",
+            help="O apelido fica apenas neste computador; o título do canal vem da conta autorizada.",
+        )
+        if st.button("Conectar nova conta", key="youtube_connect_account"):
+            try:
+                authorization = start_youtube_authorization(label)
+                st.session_state["youtube_authorization_state"] = authorization.state
+                st.rerun()
+            except YouTubeError as exc:
+                st.error(f"Não foi possível iniciar a conexão: {exc}")
+
+    if accounts:
+        st.divider()
+        st.subheader("Remover conexão local")
+        accounts_by_id = {account.id: account for account in accounts}
+        account_id = st.selectbox(
+            "Conta para remover",
+            options=[account.id for account in accounts],
+            key="youtube_remove_account_id",
+            format_func=lambda selected: accounts_by_id[selected].display_name,
+        )
+        if st.button("Remover conexão local desta conta", key="youtube_remove_account"):
+            try:
+                remove_youtube_account(account_id)
+                st.session_state.pop("youtube_selected_account_id", None)
+                st.success("A conexão local foi removida. Os snapshots analíticos já salvos foram preservados.")
+                st.rerun()
+            except YouTubeError as exc:
+                st.error(f"Não foi possível remover a conexão: {exc}")
+
+
+def render_youtube_channel_archive() -> None:
+    st.title("Arquivo analítico do canal")
+    st.caption("A coleta é iniciada somente por você e salva dados não monetários do canal neste computador.")
+    try:
+        accounts = list_youtube_accounts()
+    except YouTubeError as exc:
+        st.error(f"Não foi possível carregar as contas do YouTube: {exc}")
+        return
+    if not accounts:
+        st.info("Conecte uma conta no menu Contas do YouTube antes de iniciar uma coleta.")
+        return
+    accounts_by_id = {account.id: account for account in accounts}
+    account_id = st.selectbox(
+        "Conta para analisar",
+        options=[account.id for account in accounts],
+        key="youtube_archive_account_id",
+        format_func=lambda selected: accounts_by_id[selected].display_name,
+        help="A coleta usa somente a conta selecionada e não publica ou altera nenhum Short.",
+    )
+    st.info("Serão coletados metadados e estatísticas não monetárias disponíveis do canal, uploads e relatórios analíticos por dia/vídeo. A API pode ter atraso ou campos indisponíveis.")
+    confirmed = st.checkbox(
+        "Confirmo que desejo baixar e salvar um novo snapshot local desta conta.",
+        key="youtube_archive_confirmation",
+    )
+    if st.button("Baixar e salvar dados do canal", type="primary", disabled=not confirmed, use_container_width=True):
+        status = st.progress(0.0, text="Preparando coleta analítica…")
+
+        def update_archive_progress(message: str, fraction: float | None = None) -> None:
+            status.progress(0.0 if fraction is None else min(1.0, max(0.0, fraction)), text=message)
+
+        try:
+            with st.spinner("Consultando as APIs do YouTube…"):
+                snapshot = collect_youtube_channel_archive(account_id, progress=update_archive_progress)
+            status.progress(1.0, text="Snapshot salvo")
+            st.success(f"Coleta concluída: {snapshot.video_count} vídeo(s) e {snapshot.analytics_row_count} linha(s) analíticas.")
+            st.code(str(snapshot.path), language=None)
+        except YouTubeArchiveError as exc:
+            st.error(f"A coleta não foi concluída: {exc}")
+
+
 st.set_page_config(page_title="Local Short Studio", page_icon="🎬", layout="wide")
+destination = st.sidebar.radio(
+    "Navegação",
+    options=("Editar e publicar", "Contas do YouTube", "Arquivo analítico do canal"),
+    key="studio_destination",
+)
+if destination == "Contas do YouTube":
+    render_youtube_accounts()
+    st.stop()
+if destination == "Arquivo analítico do canal":
+    render_youtube_channel_archive()
+    st.stop()
+
 st.title("Local Short Studio")
 st.write("Transforme um roteiro e um ZIP de imagens em narração e um Short vertical local.")
 st.caption("As imagens são preparadas previamente e enviadas com o roteiro; Kokoro usa CUDA para a voz e FFmpeg monta o MP4.")

@@ -40,9 +40,9 @@ URL/ID retornado, estado de processamento e registro local da publicação
 
 ### Comportamento da interface
 
-1. Exibir uma área **Publicar no YouTube** sempre que o app estiver aberto, para conectar e selecionar contas sem depender da renderização; a publicação permanece bloqueada até existir um MP4 válido.
+1. Exibir **Editar e publicar** para selecionar uma conta já conectada; a publicação permanece bloqueada até existir um MP4 válido.
 2. Exibir um `selectbox` com `""` como primeira opção e texto `Selecione uma conta para publicar`.
-3. Mostrar somente contas concluídas no OAuth, com nome escolhido localmente e título do canal obtido da API; oferecer **Conectar nova conta** e **Desconectar**.
+3. Mostrar somente contas concluídas no OAuth, com nome escolhido localmente e título do canal obtido da API; **Conectar nova conta** e **Desconectar** ficam exclusivamente em **Contas do YouTube**.
 4. Manter **Publicar** desabilitado até existir MP4, `youtube` válido e uma conta selecionada.
 5. Antes de enviar, apresentar uma confirmação que mostre canal, título, privacidade e os campos de público infantil e mídia sintética. A confirmação é por publicação; não há envio em segundo plano.
 6. Após o envio, mostrar o link do vídeo e o estado de processamento. Falhas devem preservar o MP4 e explicar se o upload não foi iniciado, foi interrompido ou foi aceito e ainda está processando.

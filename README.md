@@ -54,7 +54,9 @@ O bloco opcional `camera` pode ficar na cena ou em um plano. Ele declara foco e 
 
 Cada cena, exceto a última, pode declarar `transition_to_next` com `cut`, `crossfade` ou `fade_black`. A duração opcional de fades aceita de 0,15 a 0,45 segundo; quando omitida, usa o padrão do perfil. Projetos antigos continuam usando a dissolvência padrão. As transições afetam somente o vídeo: narração, padding entre cenas, âncoras dos planos e legendas mantêm seus tempos originais.
 
-O bloco opcional `youtube` contém os metadados usados na publicação direta. Depois de renderizar o MP4, a interface permite escolher explicitamente uma conta conectada, revisar os dados e confirmar um upload resumível pela YouTube Data API. Se `youtube.captions.enabled` estiver ativo e o Short tiver gerado o SRT, a faixa fechada é enviada em SRT ou convertida para VTT conforme o JSON. Não há conta padrão, agendamento ou publicação em lote.
+O bloco opcional `youtube` contém os metadados usados na publicação direta. No menu lateral, **Editar e publicar** permite escolher explicitamente uma conta já conectada, revisar os dados e confirmar um upload resumível pela YouTube Data API; **Contas do YouTube** concentra conexão, reconexão e remoção local. Se `youtube.captions.enabled` estiver ativo e o Short tiver gerado o SRT, a faixa fechada é enviada em SRT ou convertida para VTT conforme o JSON. Não há conta padrão, agendamento ou publicação em lote.
+
+O menu **Arquivo analítico do canal** coleta somente sob confirmação explícita os metadados e dados não monetários disponíveis para uma conta conectada. Cada coleta vira um snapshot local em `input/channel_archive/<conta>/<ano>/<mês>/<dia>/<instante>/`, com manifesto de cobertura, canal, vídeos e métricas por dia/vídeo. Esse arquivo não contém tokens, e-mails completos, cookies ou outros segredos e não altera o JSON, ZIP, MP4 ou fluxo de geração.
 
 O fluxo de publicação está documentado em [`docs/YOUTUBE_PUBLICATION_PLAN.md`](docs/YOUTUBE_PUBLICATION_PLAN.md). Para preparar e reconectar uma conta localmente, veja [`docs/YOUTUBE_AUTHENTICATION.md`](docs/YOUTUBE_AUTHENTICATION.md): upload exige OAuth 2.0, não uma chave de API.
 

@@ -124,7 +124,13 @@ docker compose up --build -d app
 
 Confirme que `input/youtube/client_secret.json` existe e contém um cliente OAuth do tipo **Aplicativo para computador**, que a YouTube Data API v3 está habilitada no projeto Google Cloud e que a porta `8765` está livre e publicada pelo Docker. Se a porta foi alterada, use o mesmo valor em `YOUTUBE_OAUTH_PORT` e recrie o app.
 
-O seletor começa vazio por segurança. Conecte a conta, conclua o login no navegador, clique em **Atualizar após concluir o login**, selecione o canal e confirme a publicação. Chave de API não autoriza upload: é necessário OAuth. Se a mensagem pedir nova conexão para conceder a permissão de legendas, remova e conecte a conta novamente; o novo consentimento inclui `youtube.force-ssl`. Para remover o token deste computador, use **Remover conexão local desta conta**; para revogar também no Google, use as conexões de terceiros da Conta Google.
+O seletor começa vazio por segurança. Em **Contas do YouTube**, conecte a conta, conclua o login no navegador e clique em **Atualizar após concluir o login**; depois selecione o canal em **Editar e publicar** e confirme a publicação. Chave de API não autoriza upload: é necessário OAuth. Se a mensagem pedir nova conexão para conceder legendas ou análise, remova e conecte a conta novamente; o novo consentimento inclui `youtube.force-ssl` e `yt-analytics.readonly`. Para remover o token deste computador, use **Remover conexão local desta conta**; para revogar também no Google, use as conexões de terceiros da Conta Google.
+
+## Não consigo coletar o arquivo analítico do canal
+
+Use o menu **Arquivo analítico do canal**, selecione uma conta e confirme a coleta. A [YouTube Analytics API](https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com) também precisa estar habilitada no mesmo projeto Google Cloud. Se a conta foi conectada antes desse recurso, remova e conecte-a novamente para conceder `yt-analytics.readonly`.
+
+O YouTube pode negar campos, atrasar métricas, limitar a cota ou não retornar linhas para vídeos/períodos sem dados. O app não inventa valores: consulte `manifest.json` no snapshot em `input/channel_archive/` para verificar cobertura, paginação e dados ausentes por vídeo. Uma mensagem sobre relatório não suportado indica uma combinação incompatível da API, não uma falha de OAuth; uma falha não altera o projeto do Short nem cria um snapshot final.
 
 ## A legenda do YouTube não foi enviada
 
