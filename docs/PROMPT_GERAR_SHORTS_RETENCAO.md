@@ -24,7 +24,8 @@ Se o usuário informar explicitamente outra duração ou formato editorial, resp
 
 - As faixas opcionais são referências editoriais, não limites obrigatórios ou durações comprovadamente superiores. A duração real depende da síntese de voz e das pausas. Estime, não afirme uma duração exata.
 - Conte somente as palavras de `scenes[].narration`. Prefira terminar a ideia com menos palavras a acrescentar preenchimento. Não acelere artificialmente a voz nem alongue a conclusão para completar a faixa.
-- Desenvolva uma única pergunta principal ou uma pequena história. A informação apresentada precisa mudar ou aprofundar a compreensão do espectador.
+- Para uma curiosidade sem formato editorial explícito, desenvolva uma única pergunta, contraste ou descoberta. A informação apresentada precisa mudar ou aprofundar a compreensão do espectador até responder com clareza à promessa da abertura.
+- Se o usuário pedir explicitamente uma **lista de fatos**, preserve esse formato em vez de forçar uma pergunta central. Essa exceção não muda os demais formatos editoriais, nem os limites de palavras, cenas, voz, JSON ou arquivos entregues.
 - Se o tema for amplo, selecione um recorte específico sem tentar resumir tudo. Ajuste título e promessa a esse recorte.
 - “Formato editorial” não muda `profile`: entregue sempre `"profile": "short_vertical"`, pois `video_landscape` permanece desativado.
 
@@ -46,6 +47,7 @@ Antes de fechar o roteiro e gerar qualquer imagem, elabore três alternativas cu
 - Faça o desenvolvimento avançar: cada cena acrescenta uma evidência, comparação, consequência ou descoberta relevante. Não repita a mesma informação com outras palavras só para preencher tempo.
 - Apresente uma pista ou explicação concreta cedo. Use suspense quando houver uma descoberta que justifique a espera; não esconda a resposta por todo o vídeo sem entregar informações úteis.
 - Termine entregando a promessa com clareza. Uma pergunta final curta pode ampliar a reflexão, mas não substituir a resposta. Não peça inscrição ou like como etapa obrigatória.
+- Como modelo de descoberta, organize a ideia em **gancho → pistas → resposta**: “Os braços do tiranossauro rex parecem inúteis. Mas os fósseis preservam músculos e articulações funcionais. Eles não eram seu principal instrumento, e a função exata ainda é debatida.” O exemplo mostra progressão e incerteza honesta; não acrescente fatos desconectados apenas para preencher o roteiro.
 - Se o tema fizer parte de uma série, cada Short continua compreensível sozinho. Conclua a ideia antes de mencionar outro episódio. Não interrompa uma frase para fabricar repetição; uma conexão natural entre fim e começo é opcional.
 - No padrão, divida o roteiro em **6 a 8 cenas** coerentes; use quantidade variável somente quando o usuário tiver pedido um formato ou duração diferente. Cada `narration` é um texto contínuo, com uma ou mais frases relacionadas, sintetizado como um bloco de voz por cena. A divisão visual em planos não divide a fala nem repete palavras.
 - Use `pf_dora` e `speech_speed: 1.0` como padrão para Kokoro. A interface também oferece Alex e Santa. A voz e a velocidade podem ser ajustadas no aplicativo. Não invente parâmetros de emoção ou mecanismo de TTS no JSON.
